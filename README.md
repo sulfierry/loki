@@ -17,15 +17,12 @@ Loki/
 │   ├── kinase_compounds.sql  # SQL script for extracting kinase inhibitor data
 │   ├── remove_redundance.py  # Python script for data cleansing and redundancy removal
 │   └── ...
-│
 ├── Descriptors/              # Scripts for calculating molecular descriptors
 │   ├── descriptors.py        # Calculates and saves molecular descriptors
 │   └── ...
-│
 ├── Clustering/               # Scripts for molecular clustering
 │   ├── cluster_by_similarity.py  # Groups molecules by structural similarity
 │   └── ...
-│
 └── Visualization/            # Visualization scripts
     ├── histogram.py          # Generates histograms of molecular similarities and distances
     └── ...
