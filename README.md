@@ -1,6 +1,5 @@
 # Loki (Look On Kinase Inhibitors)
 
-## Overview
 **Loki** is not just a toolkit, but a comprehensive server designed to provide valuable information on kinase inhibitors to the scientific community. Initially featuring a robust set of tools for data extraction, analysis, and prediction from the ChEMBL database, Loki aims to expand its capabilities to serve as a central resource for cheminformatics research.
 
 ## Features
