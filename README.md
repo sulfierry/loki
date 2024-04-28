@@ -13,22 +13,20 @@
 ## Repository Structure
 
 Loki/
-├── ChEMBL/                   # Ferramentas iniciais para consulta e processamento de dados do banco de dados ChEMBL
-│   ├── kinase_compounds.sql # Script SQL para extração de dados de inibidores de quinasa
-│   ├── remove_redundance.py # Script Python para limpeza de dados e remoção de redundâncias
-│   └── ...
-├── Descriptors/              # Scripts para cálculo de descritores moleculares
-│   ├── descriptors.py        # Calcula e salva descritores moleculares
-│   └── ...
-├── Clustering/               # Scripts para agrupamento molecular
-│   ├── cluster_by_similarity.py # Agrupa moléculas por similaridade estrutural
-│   └── ...
-└── Visualization/            # Scripts de visualização
-    ├── histogram.py          # Gera histogramas de similaridades e distâncias moleculares
-    └── ...
 
-
-
+    ├── ChEMBL/                   # Ferramentas iniciais para consulta e processamento de dados do banco de dados ChEMBL
+    │   ├── kinase_compounds.sql # Script SQL para extração de dados de inibidores de quinasa
+    │   ├── remove_redundance.py # Script Python para limpeza de dados e remoção de redundâncias
+    │   └── ...
+    ├── Descriptors/              # Scripts para cálculo de descritores moleculares
+    │   ├── descriptors.py        # Calcula e salva descritores moleculares
+    │   └── ...
+    ├── Clustering/               # Scripts para agrupamento molecular
+    │   ├── cluster_by_similarity.py # Agrupa moléculas por similaridade estrutural
+    │   └── ...
+    └── Visualization/            # Scripts de visualização
+        ├── histogram.py          # Gera histogramas de similaridades e distâncias moleculares
+        └── ...
 
 ## Getting Started
 To get started with **Loki**, follow the setup instructions within each directory to properly configure and utilize the tools provided. As Loki expands, it will transition from a tool repository to a full-fledged server.
