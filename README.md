@@ -13,18 +13,18 @@
 ## Repository Structure
 
 Loki/
-├── ChEMBL/                   # Initial tools for querying and processing data from the ChEMBL database
-│   ├── kinase_compounds.sql  # SQL script for extracting kinase inhibitor data
-│   ├── remove_redundance.py  # Python script for data cleansing and redundancy removal
+├── ChEMBL/                   # Ferramentas iniciais para consulta e processamento de dados do banco de dados ChEMBL
+│   ├── kinase_compounds.sql # Script SQL para extração de dados de inibidores de quinasa
+│   ├── remove_redundance.py # Script Python para limpeza de dados e remoção de redundâncias
 │   └── ...
-├── Descriptors/              # Scripts for calculating molecular descriptors
-│   ├── descriptors.py        # Calculates and saves molecular descriptors
+├── Descriptors/              # Scripts para cálculo de descritores moleculares
+│   ├── descriptors.py        # Calcula e salva descritores moleculares
 │   └── ...
-├── Clustering/               # Scripts for molecular clustering
-│   ├── cluster_by_similarity.py  # Groups molecules by structural similarity
+├── Clustering/               # Scripts para agrupamento molecular
+│   ├── cluster_by_similarity.py # Agrupa moléculas por similaridade estrutural
 │   └── ...
-└── Visualization/            # Visualization scripts
-    ├── histogram.py          # Generates histograms of molecular similarities and distances
+└── Visualization/            # Scripts de visualização
+    ├── histogram.py          # Gera histogramas de similaridades e distâncias moleculares
     └── ...
 
 
