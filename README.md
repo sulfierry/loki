@@ -13,19 +13,19 @@
 
     Loki/
     ├── ChEMBL/ # Initial tools for querying and processing data from the ChEMBL database
-    │ ├── 1_kinase_compounds.sql # SQL script for extracting kinase inhibitor data
-    │ ├── 2_remove_redundance.py # Python script for data cleansing and redundancy removal
-    │ ├── 3_descriptors.py # Calculates and saves molecular descriptors
-    │ ├── 4_cluster_by_similarity.py # Groups molecules by structural similarity
-    │ ├── 5_histogram.py # Generates histograms of molecular similarities and distances
-    │ ├── README.md # General information and usage instructions
-    │ ├── chembl_nr_pkidb_descriptors.tsv# Descriptors data file
-    │ ├── cluster_size_distribution.png # Visualization of cluster sizes
-    │ ├── histogram_similarity_distance_4.png # Histograms displaying molecular similarities and distances
-    │ ├── ic50_kd_ki_descript.md # Description file for IC50, KD, KI values
-    │ ├── kinase_all_compounds.tar.xz # Compressed file containing all kinase compounds
-    │ ├── nr_chembl_pkidb_descriptors.png# Image displaying descriptors
-    │ └── tsne_similarity_4.png # t-SNE visualization of molecular similarity
+        │ ├── 1_kinase_compounds.sql # SQL script for extracting kinase inhibitor data
+        │ ├── 2_remove_redundance.py # Python script for data cleansing and redundancy removal
+        │ ├── 3_descriptors.py # Calculates and saves molecular descriptors
+        │ ├── 4_cluster_by_similarity.py # Groups molecules by structural similarity
+        │ ├── 5_histogram.py # Generates histograms of molecular similarities and distances
+        │ ├── README.md # General information and usage instructions
+        │ ├── chembl_nr_pkidb_descriptors.tsv# Descriptors data file
+        │ ├── cluster_size_distribution.png # Visualization of cluster sizes
+        │ ├── histogram_similarity_distance_4.png # Histograms displaying molecular similarities and distances
+        │ ├── ic50_kd_ki_descript.md # Description file for IC50, KD, KI values
+        │ ├── kinase_all_compounds.tar.xz # Compressed file containing all kinase compounds
+        │ ├── nr_chembl_pkidb_descriptors.png# Image displaying descriptors
+        │ └── tsne_similarity_4.png # t-SNE visualization of molecular similarity
 
 ## Getting Started
 To get started with **Loki**, follow the setup instructions within each directory to properly configure and utilize the tools provided. As Loki expands, it will transition from a tool repository to a full-fledged server.
