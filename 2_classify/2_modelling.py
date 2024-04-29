@@ -1,14 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import joblib  # Importar joblib para salvar os modelos
+import joblib
 from sklearn.model_selection import StratifiedKFold, cross_validate
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, make_scorer, balanced_accuracy_score
+from sklearn.metrics import roc_auc_score
+from imblearn.metrics import geometric_mean_score  # Importar a partir do imbalanced-learn
 from sklearn.pipeline import Pipeline
 from sklearn.utils import parallel_backend
 
-# Importação de classificadores diversos
+# Importing various classifiers
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn.gaussian_process import GaussianProcessClassifier
@@ -38,16 +40,16 @@ class Classifiers:
             'precision': make_scorer(precision_score, average='weighted', zero_division=0),
             'recall': make_scorer(recall_score, average='weighted', zero_division=0),
             'f1': make_scorer(f1_score, average='weighted', zero_division=0),
-            'roc_auc': 'roc_auc_ovr',
-            'balanced_accuracy': 'balanced_accuracy'
+            'roc_auc_ovr': 'roc_auc_ovr',
+            'balanced_accuracy': 'balanced_accuracy',
+            'geometric_mean': make_scorer(geometric_mean_score, average='weighted')  # Usando a métrica correta
         }
         with parallel_backend('loky', n_jobs=2):
             scores = cross_validate(model, self.X_train, self.y_train, cv=self.kfold,
                                     scoring=metrics, return_train_score=False,
-                                    return_estimator=True, n_jobs=2)  # Ensure return_estimator is True
+                                    return_estimator=True, n_jobs=2)
         results = {metric: np.mean(scores[f'test_{metric}']) for metric in metrics}
         return results, scores['estimator'][-1]  # Return the last fitted estimator
-
 
     def train_and_evaluate(self):
         results = []
@@ -82,12 +84,12 @@ class Classifiers:
         return results
 
 def plot_metrics(results):
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-    metrics = ['accuracy', 'precision', 'recall', 'f1', 'roc_auc', 'balanced_accuracy']
+    fig, axes = plt.subplots(3, 2, figsize=(15, 10))
+    metrics = ['accuracy', 'precision', 'recall', 'f1', 'roc_auc_ovr', 'geometric_mean']
     for i, metric in enumerate(metrics):
-        ax = axes[i//3, i%2]
+        ax = axes[i // 2, i % 2]
         names = [res[0] for res in results]
-        values = [res[1][metric] for res in results]
+        values = [res[1][metric] for res in results if metric in res[1]]
         ax.barh(names, values, color='skyblue')
         ax.set_title(f'{metric.title()} Score')
         ax.set_xlabel('Score')
@@ -103,6 +105,7 @@ def main():
         print(f"\n{name} Classifier Metrics:")
         for metric, value in result.items():
             print(f"  {metric}: {value:.2f}")
+
     plot_metrics(results)
 
 if __name__ == '__main__':
