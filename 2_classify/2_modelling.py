@@ -44,11 +44,12 @@ class Classifiers:
             'balanced_accuracy': 'balanced_accuracy',
             'geometric_mean': make_scorer(geometric_mean_score, average='weighted')  # Usando a métrica correta
         }
-        with parallel_backend('loky', n_jobs=2):
+        with parallel_backend('loky', n_jobs=1):
             scores = cross_validate(model, self.X_train, self.y_train, cv=self.kfold,
                                     scoring=metrics, return_train_score=False,
-                                    return_estimator=True, n_jobs=2)
+                                    return_estimator=True, n_jobs=1)
         results = {metric: np.mean(scores[f'test_{metric}']) for metric in metrics}
+
         return results, scores['estimator'][-1]  # Return the last fitted estimator
 
     def train_and_evaluate(self):
@@ -98,7 +99,7 @@ def plot_metrics(results):
     plt.show()
 
 def main():
-    classifier = Classifiers('split_data.npz')
+    classifier = Classifiers('/home/leon/Desktop/ChEMBL_DATABSE/1_remove_redundance/ml_input/split_data.npz')
     results = classifier.train_and_evaluate()
     print("\nEvaluation Results:")
     for name, result in results:
