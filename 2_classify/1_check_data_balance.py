@@ -16,39 +16,52 @@ class CheckBalance:
                    'standard_value', 'standard_type', 'kinase_group']
         return pd.read_csv(self.filepath, sep='\t', usecols=columns)
 
-    def analyze_class_balance(self):
+    def prepare_labels(self):
         # Prepare labels based on activity thresholds
         self.data['label'] = self.data['standard_value'].apply(lambda x: 'active' if x < self.activity_threshold else 'inactive')
+
+
+    def analyze_class_balance(self):
+        # Ensure labels are prepared
+        if 'label' not in self.data.columns:
+            self.prepare_labels()
 
         # Analyze class balance within each kinase group
         class_counts = self.data.groupby(['kinase_group', 'label']).size().unstack(fill_value=0)
 
         # Plotting the overall balance
         plt.figure(figsize=(10, 6))
+
         sns.countplot(x='label', data=self.data)
         plt.title('Overall Class Balance')
         plt.xlabel('Activity Class')
         plt.ylabel('Number of Compounds')
+        plt.savefig('class_balance_overall.png')
         plt.show()
 
         # Plotting the balance by kinase group
         class_counts.plot(kind='bar', stacked=True, figsize=(14, 8))
         plt.ylabel('Number of Compounds')
         plt.title('Class Balance by Kinase Group')
+        plt.savefig('class_balance_kinase_group.png')
         plt.show()
 
         # Detailed distribution plot
         plt.figure(figsize=(14, 8))
         detailed_plot = sns.histplot(data=self.data, x='kinase_group', hue='label', multiple="dodge", shrink=.8)
         detailed_plot.set_yscale('log')
-        sns.histplot(data=self.data, x='kinase_group', hue='label', multiple="dodge", shrink=.8)
         plt.title('Distribution of Activity Classes within Kinase Groups')
         plt.xticks(rotation=45)
         plt.xlabel('Kinase Group')
         plt.ylabel('Count')
+        plt.savefig('distribution_activity_classes_kinase_groups.png')
         plt.show()
 
     def analyze_class_metrics(self):
+        # Ensure labels are prepared
+        if 'label' not in self.data.columns:
+            self.prepare_labels()
+
         # Calculate class counts and ratios
         class_counts = self.data['label'].value_counts()
         class_ratio = class_counts['active'] / class_counts['inactive'] if 'active' in class_counts and 'inactive' in class_counts else float('inf')
@@ -60,18 +73,29 @@ class CheckBalance:
         # Calculate the coefficient of variation
         coeff_variation = np.std(class_counts) / np.mean(class_counts)
 
-        print("Class Ratio:", class_ratio)
-        print("Entropy of Distribution:", data_entropy)
-        print("Coefficient of Variation:", coeff_variation)
+        results = pd.DataFrame({
+            "Metric": ["Class Ratio", "Entropy of Distribution", "Coefficient of Variation"],
+            "Value": [class_ratio, data_entropy, coeff_variation]
+        })
+        results.to_csv('data_balance_statistics.tsv', sep='\t', index=False)
+
+    def save_output(self):
+        if 'label' not in self.data.columns:
+            self.prepare_labels()
+
+        groups_to_remove = ['Membrane receptor', 'Transcription factor', 'Tudor domain', 'Bromodomain', 'Plant homeodomain','PWWP', 'Potassium channel']
+        self.data = self.data[~self.data['kinase_group'].isin(groups_to_remove)]
+        self.data.to_csv('filtered_output.csv', index=False)
 
 def main():
     # Set activity threshold for nM (e.g., 10µM expressed as 10000 nM)
     ACTIVITY_THRESHOLD = 1000
     filepath = '../1_remove_redundance/nr_kinase_all_compounds_salt_free_ver2.tsv'  # Adjust as needed
-    
+
     checker = CheckBalance(filepath, ACTIVITY_THRESHOLD)
-    checker.analyze_class_balance()
-    checker.analyze_class_metrics()
+    checker.save_output()  # Save the output with specific rows removed
+    checker.analyze_class_metrics()  # Calculate and save class metrics
+    checker.analyze_class_balance()  # Analyze and plot data from the saved output
 
 if __name__ == '__main__':
     main()
