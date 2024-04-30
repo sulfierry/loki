@@ -52,7 +52,7 @@ def split_data(data):
 
 def main():
     # Load data
-    filepath = 'test_dataset.tsv'  # Adjust as needed
+    filepath = 'test_1000.tsv'  # Adjust as needed
     data = load_data(filepath)
 
     # Preprocess data
