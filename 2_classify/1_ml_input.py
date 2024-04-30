@@ -27,7 +27,7 @@ def convert_smiles_batch(smiles_list, radius=2, n_bits=2048):
     return results
 
 def preprocess_data(data):
-    batch_size = 8192
+    batch_size = 524288
     fingerprints = []
 
     for i in tqdm(range(0, len(data), batch_size), desc="Processing batches"):
@@ -54,7 +54,7 @@ def split_data(data):
     y = data['label'].values
 
     # Splitting the data into training, validation, and testing sets
-    X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.2, random_state=42)  # 80% training, 20% for split into val and test
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)  # 80% training, 20% for split into val and test
     #X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)  # Splitting the 20% into 10% validation and 10% test
 
     #return X_train, X_val, X_test, y_train, y_val, y_test
@@ -76,8 +76,7 @@ def main():
 
     # Optionally save the split data
     #np.savez('split_data.npz', X_train=X_train, X_val=X_val, X_test=X_test, y_train=y_train, y_val=y_val, y_test=y_test)
-    np.savez('split_data.npz', X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test)
+    np.savez('./split_data.npz', X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test)
 
 if __name__ == '__main__':
     main()
-
