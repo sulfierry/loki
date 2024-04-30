@@ -4,11 +4,11 @@ from tqdm import tqdm
 import joblib
 from sklearn.model_selection import StratifiedKFold, cross_validate
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, make_scorer, balanced_accuracy_score
-from sklearn.metrics import roc_auc_score
-from imblearn.metrics import geometric_mean_score  # Importar a partir do imbalanced-learn
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, make_scorer, balanced_accuracy_score
+from imblearn.metrics import geometric_mean_score  # Import from imbalanced-learn
 from sklearn.pipeline import Pipeline
 from sklearn.utils import parallel_backend
+from sklearn.metrics import roc_auc_score
 
 # Importing various classifiers
 from sklearn.neighbors import KNeighborsClassifier
@@ -31,23 +31,23 @@ class Classifiers:
 
     def load_data(self):
         loader = np.load(self.data_path, allow_pickle=True)
-        self.X_train, self.X_val, self.X_test = loader['X_train'], loader['X_val'], loader['X_test']
-        self.y_train, self.y_val, self.y_test = loader['y_train'], loader['y_val'], loader['y_test']
+        self.X_train, self.X_test = loader['X_train'], loader['X_test']
+        self.y_train, self.y_test = loader['y_train'], loader['y_test']
 
     def evaluate_model(self, model, name):
         metrics = {
             'accuracy': 'accuracy',
-            'precision': make_scorer(precision_score, average='weighted', zero_division=0),
-            'recall': make_scorer(recall_score, average='weighted', zero_division=0),
-            'f1': make_scorer(f1_score, average='weighted', zero_division=0),
-            'roc_auc_ovr': 'roc_auc_ovr',
+            'precision': make_scorer(precision_score, average='macro', zero_division=0),
+            'recall': make_scorer(recall_score, average='macro', zero_division=0),
+            'f1': make_scorer(f1_score, average='macro', zero_division=0),
             'balanced_accuracy': 'balanced_accuracy',
-            'geometric_mean': make_scorer(geometric_mean_score, average='weighted')  # Usando a métrica correta
+            'geometric_mean': make_scorer(geometric_mean_score, average='macro')  # Using the correct metric
         }
-        with parallel_backend('loky', n_jobs=1):
+        # Increased parallelism
+        with parallel_backend('loky', n_jobs=-1):  # Utilize all available cores
             scores = cross_validate(model, self.X_train, self.y_train, cv=self.kfold,
                                     scoring=metrics, return_train_score=False,
-                                    return_estimator=True, n_jobs=1)
+                                    return_estimator=True, n_jobs=-1)  # Utilize all cores during cross-validation
         results = {metric: np.mean(scores[f'test_{metric}']) for metric in metrics}
 
         return results, scores['estimator'][-1]  # Return the last fitted estimator
@@ -64,7 +64,7 @@ class Classifiers:
             ("Random Forest", RandomForestClassifier(max_depth=5, n_estimators=10, max_features=1)),
             ("Neural Net", MLPClassifier(alpha=1, max_iter=1000)),
             ("AdaBoost", AdaBoostClassifier()),
-            ("Naive Bayes", GaussianNB()),
+            ("Naive Bayes", GaussianNB(var_smoothing=1e-8)),
             ("QDA", QuadraticDiscriminantAnalysis()),
             ("Logistic Regression", LogisticRegression(max_iter=1000)),
             ("Gradient Boosting", GradientBoostingClassifier()),
@@ -86,7 +86,7 @@ class Classifiers:
 
 def plot_metrics(results):
     fig, axes = plt.subplots(3, 2, figsize=(15, 10))
-    metrics = ['accuracy', 'precision', 'recall', 'f1', 'roc_auc_ovr', 'geometric_mean']
+    metrics = ['accuracy', 'precision', 'recall', 'f1', 'balanced_accuracy', 'geometric_mean']
     for i, metric in enumerate(metrics):
         ax = axes[i // 2, i % 2]
         names = [res[0] for res in results]
@@ -99,7 +99,7 @@ def plot_metrics(results):
     plt.show()
 
 def main():
-    classifier = Classifiers('/home/leon/Desktop/ChEMBL_DATABSE/1_remove_redundance/ml_input/split_data.npz')
+    classifier = Classifiers('./split_data.npz')
     results = classifier.train_and_evaluate()
     print("\nEvaluation Results:")
     for name, result in results:
