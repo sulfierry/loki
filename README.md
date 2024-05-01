@@ -27,6 +27,18 @@
             │ ├── nr_chembl_pkidb_descriptors.png# Image displaying descriptors
             │ └── tsne_similarity_4.png # t-SNE visualization of molecular similarity
 
+## MLmodel
+
+The `MLmodel` folder in Loki contains a suite of Python scripts designed to facilitate the building and evaluation of machine learning models that predict kinase inhibitor targets based on molecular data. These scripts are crafted to handle large datasets efficiently, perform robust data preprocessing, feature extraction, and deploy multiple machine learning algorithms for comparative analysis.
+
+### Script Descriptions
+
+- **1_check_data_balance.py**: This script assesses the balance of data classes within the dataset. It provides visualizations and statistical measures to ensure the data used in model training is well-distributed, reducing biases towards any particular class.
+
+- **2_ml_input.py**: Prepares the dataset for machine learning by converting SMILES strings to molecular fingerprints, splitting the dataset into training and testing sets, and applying various preprocessing methods. It ensures that the data is ready for effective model training.
+
+- **3_modelling.py**: Implements multiple machine learning algorithms to evaluate their performance on the dataset. This script includes models such as Random Forests, SVM, and Neural Networks. It provides tools for cross-validation, performance evaluation, and the ability to save the best-performing models for further use.
+
 ## Getting Started
 To get started with **Loki**, follow the setup instructions within each directory to properly configure and utilize the tools provided. As Loki expands, it will transition from a tool repository to a full-fledged server.
 
@@ -38,3 +50,9 @@ This project is licensed under the MIT License - see the LICENSE.md file for det
 
 ## Acknowledgments
 Special thanks to all the contributors and researchers whose insights and feedback have been invaluable in shaping **Loki** into a pivotal resource for the scientific community.
+
+
+### Documentation
+
+Each script is well-documented with comments explaining the steps taken and the rationale behind each decision. For a deeper understanding, refer to the inline comments within each script.
+
