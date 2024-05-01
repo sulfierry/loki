@@ -9,7 +9,7 @@
 - **Molecular Clustering**: Sophisticated algorithms to group molecules based on structural similarities and visualize clusters.
 - **Visualization Tools**: Comprehensive scripts to generate histograms and other visual representations of data distributions and molecular properties.
 
-## Repository Structure
+## ChEMBL
 
     Loki/
         ├── ChEMBL/ # Initial tools for querying and processing data from the ChEMBL database
