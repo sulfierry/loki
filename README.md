@@ -20,7 +20,7 @@
     │   ├── 5_histogram.py # Generates histograms of molecular similarities and distances
     │   ├── README.md # General information and usage instructions
     │   └── chembl_nr_pkidb_descriptors.tsv # Descriptors data file
-    ├── MLmodel/ # Machine Learning models for predicting kinase inhibition
+    ├── MLmodel/ # Machine Learning models for predicting kinase ligand group
     │   ├── 1_check_data_balance.py # Analyzes class balance and generates visualizations
     │   ├── 2_ml_input.py # Preprocesses data to generate features suitable for ML models
     │   └── 3_modelling.py # Trains and evaluates various ML models to predict kinase groups
