@@ -9,23 +9,40 @@
 - **Molecular Clustering**: Sophisticated algorithms to group molecules based on structural similarities and visualize clusters.
 - **Visualization Tools**: Comprehensive scripts to generate histograms and other visual representations of data distributions and molecular properties.
 
-## ChEMBL
+## Repository Structure
 
     Loki/
-        ├── ChEMBL/ # Initial tools for querying and processing data from the ChEMBL database
-            │ ├── 1_kinase_compounds.sql # SQL script for extracting kinase inhibitor data
-            │ ├── 2_remove_redundance.py # Python script for data cleansing and redundancy removal
-            │ ├── 3_descriptors.py # Calculates and saves molecular descriptors
-            │ ├── 4_cluster_by_similarity.py # Groups molecules by structural similarity
-            │ ├── 5_histogram.py # Generates histograms of molecular similarities and distances
-            │ ├── README.md # General information and usage instructions
-            │ ├── chembl_nr_pkidb_descriptors.tsv# Descriptors data file
-            │ ├── cluster_size_distribution.png # Visualization of cluster sizes
-            │ ├── histogram_similarity_distance_4.png # Histograms displaying molecular similarities and distances
-            │ ├── ic50_kd_ki_descript.md # Description file for IC50, KD, KI values
-            │ ├── kinase_all_compounds.tar.xz # Compressed file containing all kinase compounds
-            │ ├── nr_chembl_pkidb_descriptors.png# Image displaying descriptors
-            │ └── tsne_similarity_4.png # t-SNE visualization of molecular similarity
+    ├── ChEMBL/ # Tools for querying and processing data from the ChEMBL database
+    │   ├── 1_kinase_compounds.sql # SQL script for extracting kinase inhibitor data
+    │   ├── 2_remove_redundance.py # Python script for data cleansing and redundancy removal
+    │   ├── 3_descriptors.py # Calculates and saves molecular descriptors
+    │   ├── 4_cluster_by_similarity.py # Groups molecules by structural similarity
+    │   ├── 5_histogram.py # Generates histograms of molecular similarities and distances
+    │   ├── README.md # General information and usage instructions
+    │   └── chembl_nr_pkidb_descriptors.tsv # Descriptors data file
+    ├── MLmodel/ # Machine Learning models for predicting kinase inhibition
+    │   ├── 1_check_data_balance.py # Analyzes class balance and generates visualizations
+    │   ├── 2_ml_input.py # Preprocesses data to generate features suitable for ML models
+    │   └── 3_modelling.py # Trains and evaluates various ML models to predict kinase groups
+    └── README.md # Overview of the Loki project and navigation guide
+
+## ChEMBL
+
+The `ChEMBL` directory within the Loki repository provides a comprehensive set of SQL and Python scripts designed to interact with the ChEMBL database, specifically tailored to extract and process data regarding kinase inhibitors. These tools are intended to facilitate the retrieval, cleaning, and initial analysis of chemical data, which can then be used for more advanced computational chemistry and machine learning applications.
+
+### Script Descriptions
+
+- **1_kinase_compounds.sql**: SQL script dedicated to extracting detailed information on kinase inhibitors from the ChEMBL database. This script focuses on retrieving compound data with confirmed biological activities, providing a robust dataset for further analysis.
+
+- **2_remove_redundance.py**: A Python script used to clean the extracted data by removing redundant entries and resolving issues like salt forms in compound structures, ensuring that the data integrity is maintained for scientific analysis.
+
+- **3_descriptors.py**: Utilizes RDKit to calculate and store various molecular descriptors that are critical for the study of chemical compounds, especially those used in drug design and pharmacological assessments.
+
+- **4_cluster_by_similarity.py**: Implements clustering algorithms to group kinase inhibitors based on their structural similarities, which helps in identifying unique or common features among different inhibitors.
+
+- **5_histogram.py**: Generates histograms and other graphical representations to visualize the distribution of molecular properties and the results of similarity analyses among the compounds.
+
+These tools are designed not only to support researchers in cheminformatics but also to serve as a foundation for more complex machine learning frameworks that predict the behavior or function of kinase inhibitors.
 
 ## MLmodel
 
