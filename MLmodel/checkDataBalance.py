@@ -40,11 +40,11 @@ class CheckBalance:
         plt.show()
 
         # Plotting the balance by kinase group
-        class_counts.plot(kind='bar', stacked=True, figsize=(14, 8))
-        plt.ylabel('Number of Compounds')
-        plt.title('Class Balance by Kinase Group')
-        plt.savefig('class_balance_kinase_group.png')
-        plt.show()
+        # class_counts.plot(kind='bar', stacked=True, figsize=(14, 8))
+        # plt.ylabel('Number of Compounds')
+        # plt.title('Class Balance by Kinase Group')
+        # plt.savefig('class_balance_kinase_group.png')
+        # plt.show()
 
         # Detailed distribution plot
         plt.figure(figsize=(14, 8))
@@ -85,12 +85,12 @@ class CheckBalance:
 
         groups_to_remove = ['Membrane receptor', 'Transcription factor', 'Tudor domain', 'Bromodomain', 'Plant homeodomain','PWWP', 'Potassium channel']
         self.data = self.data[~self.data['kinase_group'].isin(groups_to_remove)]
-        self.data.to_csv('filtered_output.csv', index=False)
+        self.data.to_csv('filtered_dataset.tsv', sep="\t", index=False)
 
 def main():
     # Set activity threshold for nM (e.g., 10µM expressed as 10000 nM)
     ACTIVITY_THRESHOLD = 1000
-    filepath = '../1_remove_redundance/nr_kinase_all_compounds_salt_free_ver2.tsv'  # Adjust as needed
+    filepath = './nr_kinase_all_compounds_salt_free_ver2.tsv'  # Adjust as needed
 
     checker = CheckBalance(filepath, ACTIVITY_THRESHOLD)
     checker.save_output()  # Save the output with specific rows removed
