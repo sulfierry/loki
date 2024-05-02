@@ -47,7 +47,7 @@ class Classifiers:
         with parallel_backend('loky', n_jobs=-1):  # Utilize all available cores
             scores = cross_validate(model, self.X_train, self.y_train, cv=self.kfold,
                                     scoring=metrics, return_train_score=False,
-                                    return_estimator=True, n_jobs=-1)  # Utilize all cores during cross-validation
+                                    return_estimator=True, n_jobs=1)  # Utilize all cores during cross-validation
         results = {metric: np.mean(scores[f'test_{metric}']) for metric in metrics}
 
         return results, scores['estimator'][-1]  # Return the last fitted estimator
