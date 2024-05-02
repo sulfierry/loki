@@ -28,7 +28,7 @@ This system is designed for predicting kinase targets and groups for given ligan
   
 - **`split_data(data)`**: Splits the dataset into training and testing sets, based on processed fingerprints and binary labels, facilitating model training and evaluation.
 
-### 3. Model Training and Evaluation (`3_modelling.py`)
+### 3. Model Training and Evaluation (`kinaseGroupClassifier.py`)
 
 - **`Classifiers` class**: Handles loading of data and training of machine learning models for kinase prediction.
   
