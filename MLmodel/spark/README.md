@@ -11,12 +11,7 @@ Key functionalities:
 - Calculate and report key metrics such as class ratio, entropy of the distribution, and the coefficient of variation to assess the balance and diversity of the dataset.
 - Save outputs and filtered datasets for further processing, ensuring that data with specific characteristics are excluded from analysis to maintain dataset integrity.
 
-This class is designed to precede data preprocessing and machine learning tasks in the pipeline, ensuring that the input data for model training in `FormatFile` and `SparkML` classes is well-prepared and balanced. It is especially useful in scenarios where class imbalance could bias the results of machine learning models, providing initial insights and adjustments before deep analysis.
-
-The execution sequence in the overall pipeline is as follows:
-1. **CheckBalance**: Ensures data balance and integrity.
-2. **FormatFile**: Handles data conversion and preparation for machine learning.
-3. **SparkML**: Conducts machine learning model training and evaluation.
+This class is designed to precede data preprocessing and machine learning tasks in the pipeline, ensuring that the input data for model training in `FormatFile` and `SparkML` classes is well-prepared and balanced. It is especially useful in scenarios where class imbalance could bias the results of machine learning models, providing initial insights and adjustments before deep analysis. 
 
 The `CheckBalance` class not only prepares the data but also sets the stage for robust and fair machine learning model development by addressing potential biases in the dataset upfront.
 
@@ -46,3 +41,8 @@ Key functionalities:
 - Plot and compare the accuracy of different models using matplotlib.
 
 These classes are part of a larger framework designed to streamline the workflow from raw data processing to machine learning model training and evaluation, making it well-suited for projects involving large datasets and complex machine learning tasks.
+
+The execution sequence in the overall pipeline is as follows:
+1. **CheckBalance**: Ensures data balance and integrity.
+2. **FormatFile**: Handles data conversion and preparation for machine learning.
+3. **SparkML**: Conducts machine learning model training and evaluation.
