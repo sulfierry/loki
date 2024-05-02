@@ -45,23 +45,29 @@ class FormatFileML:
             fingerprints.extend(batch_fingerprints)
 
         data['fingerprint'] = fingerprints
+        # Encode labels as integers
+        label_encoder = {label: idx for idx, label in enumerate(data['kinase_group'].unique())}
+        data['indexedLabel'] = data['kinase_group'].map(label_encoder)
+
         return data
 
     @staticmethod
     def split_data(data):
         X = np.array(data['fingerprint'].tolist())
-        y = data['kinase_group'].values
+        y = data['indexedLabel'].values  # Use indexedLabel as target
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
         return X_train, X_test, y_train, y_test
 
     @staticmethod
-    def save_to_parquet(data, filepath):
-        table = pa.Table.from_pandas(data)
+    def save_to_parquet(X, y, filepath):
+        df = pd.DataFrame(X, columns=[f'feature_{i}' for i in range(X.shape[1])])
+        df['target'] = y
+        table = pa.Table.from_pandas(df)
         pq.write_table(table, filepath)
 
 def main():
     # Initialize formatter with the path to the dataset
-    formatter = FormatFileML('../filtered_datase.tsv')
+    formatter = FormatFileML('../filtered_dataset.tsv')
 
     # Load data
     data = formatter.load_data()
@@ -72,13 +78,8 @@ def main():
     # Split data
     X_train, X_test, y_train, y_test = formatter.split_data(data)
 
-    # Convert to DataFrame to save in Parquet
-    df_train = pd.DataFrame(X_train, columns=[f'feature_{i}' for i in range(X_train.shape[1])])
-    df_train['target'] = y_train
-
-    # Optionally save the split data in .npz and Parquet formats
-    np.savez('split_data.npz', X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test)
-    formatter.save_to_parquet(df_train, 'train_data.parquet')
+    # Save the split data in Parquet format
+    formatter.save_to_parquet(X_train, y_train, 'train_data.parquet')
 
 if __name__ == '__main__':
     main()
