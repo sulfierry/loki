@@ -4,7 +4,7 @@ This system is designed for predicting kinase targets and groups for given ligan
 
 ## Modules Description
 
-### 1. Data Balance Checking (`1_check_data_balance.py`)
+### 1. Data Balance Checking (`checkDataBalance.py`)
 
 - **`CheckBalance` class**: Manages the loading and processing of chemical data, and checks for balance in dataset classification labels.
   
