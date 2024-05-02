@@ -6,6 +6,7 @@ from rdkit.Chem import AllChem
 from sklearn.model_selection import train_test_split
 import concurrent.futures
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 def load_data(filepath):
     data = pd.read_csv(filepath, sep='\t')
@@ -19,13 +20,15 @@ def smiles_to_fingerprints(smiles, radius=2, n_bits=2048):
         return AllChem.GetMorganFingerprintAsBitVect(mol, radius, n_bits).ToList()
     return [0] * n_bits
 
+
 def convert_smiles_batch(smiles_list, radius=2, n_bits=2048):
-    """ Convert a batch of SMILES to fingerprints using multiple processes. """
-    with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+    """ Convert a batch of SMILES to fingerprints using multiple threads. """
+    with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
         results = list(tqdm(executor.map(smiles_to_fingerprints, smiles_list,
                                          [radius] * len(smiles_list), [n_bits] * len(smiles_list)),
                            total=len(smiles_list), desc="Converting SMILES"))
     return results
+
 
 def preprocess_data(data):
     batch_size = 524288
@@ -52,7 +55,7 @@ def split_data(data):
 
 def main():
     # Load data
-    filepath = 'test_1000.tsv'  # Adjust as needed
+    filepath = './test_200.tsv'  # Adjust as needed
     data = load_data(filepath)
 
     # Preprocess data
