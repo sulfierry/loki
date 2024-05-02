@@ -16,7 +16,7 @@ This system is designed for predicting kinase targets and groups for given ligan
   
   - **`save_output(data)`**: Saves the filtered and processed dataset to a local file after removing specified kinase group entries.
 
-### 2. Data Preprocessing (`2_ml_input.py`)
+### 2. Data Preprocessing (`formatInput.py`)
 
 - **`load_data(filepath)`**: Loads data with predefined columns including chemical IDs, SMILES notation, kinase information, and labels from a file.
   
