@@ -1,7 +1,5 @@
-import os
-import time
 from pyspark.sql import SparkSession
-from pyspark.ml.feature import VectorAssembler, StandardScaler, PCA, StringIndexer, MinMaxScaler
+from pyspark.ml.feature import VectorAssembler, StandardScaler, PCA, StringIndexer
 from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
 from pyspark.ml import Pipeline
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
@@ -9,7 +7,6 @@ from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
 import matplotlib.pyplot as plt
 
 class SparkML:
-    
     def __init__(self, data_path):
         self.spark = SparkSession.builder \
             .appName("Advanced Spark ML with Multiple Metrics and Models") \
@@ -25,28 +22,41 @@ class SparkML:
             .getOrCreate()
 
         self.data_path = data_path
-        self.df = self.load_data()
-        self.assembler, self.scaler, self.pca, self.min_max_scaler, self.indexer = self.prepare_pipeline()
+        self.df = self.load_and_prepare_data()
 
-    def load_data(self):
-        return self.spark.read.parquet(self.data_path).withColumnRenamed("target", "label")
+    def load_and_prepare_data(self):
+        df = self.spark.read.parquet(self.data_path)
+        df = df.withColumnRenamed("target", "label")
 
-    def prepare_pipeline(self):
         assembler = VectorAssembler(inputCols=[f"feature_{i}" for i in range(2048)], outputCol="features")
         scaler = StandardScaler(inputCol="features", outputCol="scaledFeatures")
-        pca = PCA(k=20, inputCol="scaledFeatures", outputCol="pcaFeatures")
-        min_max_scaler = MinMaxScaler(inputCol="pcaFeatures", outputCol="scaledPcaFeatures")
-        indexer = StringIndexer(inputCol="label", outputCol="indexedLabel")
-        return assembler, scaler, pca, min_max_scaler, indexer
+        pca = PCA(k=50, inputCol="scaledFeatures", outputCol="pcaFeatures")
+        indexer = StringIndexer(inputCol="label", outputCol="indexedLabel", handleInvalid="keep")
+
+        pipeline = Pipeline(stages=[assembler, scaler, pca, indexer])
+        model = pipeline.fit(df)
+        transformed_df = model.transform(df)
+
+        # Check the output to ensure labels are numeric
+        transformed_df.select("indexedLabel").distinct().show()
+
+        return transformed_df
+
+
 
     def configure_models(self):
-        logistic_regression = LogisticRegression(featuresCol='scaledPcaFeatures', labelCol='indexedLabel', family='multinomial')
+        logistic_regression = LogisticRegression(featuresCol='pcaFeatures', labelCol='indexedLabel', family='multinomial')
+        rf = RandomForestClassifier(featuresCol='pcaFeatures', labelCol='indexedLabel')
+        dt = DecisionTreeClassifier(featuresCol='pcaFeatures', labelCol='indexedLabel')
+        nb = NaiveBayes(featuresCol='pcaFeatures', labelCol='indexedLabel', modelType="multinomial")
+        ovr = OneVsRest(classifier=logistic_regression)
+
         return [
-            ("Random Forest", RandomForestClassifier(featuresCol='scaledPcaFeatures', labelCol='indexedLabel')),
-            ("Logistic Regression", logistic_regression),
-            ("Decision Tree", DecisionTreeClassifier(featuresCol='scaledPcaFeatures', labelCol='indexedLabel')),
-            ("Naive Bayes", NaiveBayes(featuresCol='scaledPcaFeatures', labelCol='indexedLabel', modelType="multinomial")),
-            ("One-vs-Rest", OneVsRest(classifier=logistic_regression))
+            ("Random Forest", rf, ParamGridBuilder().addGrid(rf.numTrees, [10, 20]).build()),
+            ("Logistic Regression", logistic_regression, ParamGridBuilder().addGrid(logistic_regression.regParam, [0.1, 0.01]).build()),
+            ("Decision Tree", dt, ParamGridBuilder().build()),
+            ("Naive Bayes", nb, ParamGridBuilder().build()),
+            ("One-vs-Rest", ovr, ParamGridBuilder().build())
         ]
 
     def train_and_evaluate_models(self):
@@ -56,20 +66,14 @@ class SparkML:
         if not os.path.exists(model_directory):
             os.makedirs(model_directory)
 
-        start_time = time.time()
-        for name, model in self.configure_models():
-            pipeline = Pipeline(stages=[self.indexer, self.assembler, self.scaler, self.pca, self.min_max_scaler, model])
-            paramGrid = ParamGridBuilder().build()
+        for name, model, paramGrid in self.configure_models():
             evaluator = MulticlassClassificationEvaluator(labelCol="indexedLabel", predictionCol="prediction", metricName="accuracy")
-            crossval = CrossValidator(estimator=pipeline, estimatorParamMaps=paramGrid, evaluator=evaluator, numFolds=5)
+            crossval = CrossValidator(estimator=model, estimatorParamMaps=paramGrid, evaluator=evaluator, numFolds=5)
             cvModel = crossval.fit(train)
             test_pred = cvModel.transform(test)
             accuracy = evaluator.evaluate(test_pred)
             results.append((name, accuracy, cvModel))
             print(f"{name} - Accuracy: {accuracy:.4f}")
-
-        elapsed_time = time.time() - start_time
-        print(f"Training and evaluation took {elapsed_time:.2f} seconds.")
 
         results.sort(key=lambda x: x[1], reverse=True)
         top_models = results[:3]
@@ -91,7 +95,7 @@ class SparkML:
         plt.show()
 
 def main():
-    data_path = './train_data.parquet'  # Path to the input data
+    data_path = './train_data.parquet'
     ml_system = SparkML(data_path)
     ml_system.train_and_evaluate_models()
 
