@@ -68,7 +68,7 @@ The `sparkML.py` script processes data through a series of steps designed to pre
 #### Data Workflow Diagram
 
 Here is a visual representation of the data workflow in `sparkML.py`:
-
+bash```
 +----------------+       +------------------+       +--------------------+
 | Dados Iniciais | ----> | Indexação de     | ----> | Montagem de        |
 | (Parquet File) |       | Rótulos (target) |       | Características    |
@@ -102,7 +102,7 @@ Here is a visual representation of the data workflow in `sparkML.py`:
                                                      | Modelagem           |
                                                      +---------------------+
 
-
+```
 These classes are part of a larger framework designed to streamline the workflow from raw data processing to machine learning model training and evaluation, making it well-suited for projects involving large datasets and complex machine learning tasks.
 
 The execution sequence in the overall pipeline is as follows:
