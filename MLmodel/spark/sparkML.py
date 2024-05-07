@@ -1,56 +1,38 @@
 import os
+import matplotlib.pyplot as plt
+
+# pyspark sql
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import udf, col, when, isnan, array, count
+from pyspark.sql.types import FloatType, BooleanType, ArrayType, StringType
+
+# pyspark ml
+from pyspark.ml import Pipeline
+from pyspark.ml.linalg import Vectors, VectorUDT, DenseVector
+from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
+from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 from pyspark.ml.feature import VectorAssembler, StandardScaler, MinMaxScaler, PCA, StringIndexer
 from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
-from pyspark.ml import Pipeline
-from pyspark.ml.evaluation import MulticlassClassificationEvaluator
-from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
-import matplotlib.pyplot as plt
-from pyspark.sql.functions import col, when, count, isnan
-
-from pyspark.sql.functions import udf
-from pyspark.ml.linalg import Vectors, VectorUDT
-from pyspark.sql.types import ArrayType, FloatType
 
 
-from pyspark.sql.functions import udf
-from pyspark.ml.linalg import VectorUDT, DenseVector
-from pyspark.sql.types import BooleanType
-from pyspark.sql.types import StringType
 
-from pyspark.sql.functions import udf, col, when, isnan, array
-from pyspark.sql.types import FloatType, BooleanType, ArrayType
-from pyspark.ml.linalg import Vectors
-from pyspark.ml.feature import VectorAssembler, MinMaxScaler
-from pyspark.ml import Pipeline
+# UDF para converter vetor em array e corrigir valores
+def vector_to_corrected_array(vector):
+    # Corrige o vetor: substitui negativos e NaNs por zero
+    return [0 if x < 0 or isnan(x) else x for x in vector.toArray()]
 
-# Define a UDF to convert vector to array
-def vector_to_array(vector):
-    return vector.toArray().tolist()
-
-vector_to_array_udf = udf(vector_to_array, ArrayType(FloatType()))
+vector_to_corrected_array_udf = udf(vector_to_corrected_array, ArrayType(FloatType()))
 
 def check_and_normalize_vectors(df, feature_col):
-    # Convert the feature vectors to array for manipulation
-    df = df.withColumn("feature_array", vector_to_array_udf(col(feature_col)))
-
-    # Check and correct any negative values or NaNs in the feature arrays
-    corrected_features = []
-    for i in range(1024):  # Assuming a feature size of 2048
-        corrected_feature_col = f"corrected_feature_{i}"
-        # Replace negative values and NaNs with zero
-        df = df.withColumn(corrected_feature_col, when(col("feature_array")[i] < 0, 0)
-                                                 .otherwise(when(isnan(col("feature_array")[i]), 0)
-                                                 .otherwise(col("feature_array")[i])))
-        corrected_features.append(corrected_feature_col)
-
-    # Assemble the corrected features back into a vector
-    assembler = VectorAssembler(inputCols=corrected_features, outputCol="corrected_features")
+    # Converte o vetor de características para array e aplica correções
+    df = df.withColumn("corrected_array", vector_to_corrected_array_udf(col(feature_col)))
+    
+    # Reassemble as características corrigidas de volta para um vetor
+    assembler = VectorAssembler(inputCols=["corrected_array"], outputCol="corrected_features")
     df = assembler.transform(df)
-
-    # Clean up the DataFrame by dropping used columns
-    df = df.drop("feature_array")
-    df = df.drop(*corrected_features)
+    
+    # Limpeza das colunas intermediárias
+    df = df.drop("corrected_array")
 
     return df
 
@@ -90,24 +72,29 @@ class SparkML:
         df = label_indexer.fit(df).transform(df)
 
         # Assemble features into a single vector
-        feature_columns = [f"feature_{i}" for i in range(1024)]
+        feature_columns = [f"feature_{i}" for i in range(2048)]
         assembler = VectorAssembler(inputCols=feature_columns, outputCol="rawFeatures")
         df = assembler.transform(df)
 
         # Normalize features to be between 0 and 1
-        scaler = MinMaxScaler(inputCol="rawFeatures", outputCol="features")
-        scalerModel = scaler.fit(df)
-        df = scalerModel.transform(df)
+        scaler = MinMaxScaler(inputCol="rawFeatures", outputCol="scaledFeatures")
+        df = scaler.fit(df).transform(df)
 
         # Apply corrections for any improper values
-        df = check_and_normalize_vectors(df, "features")
+        df = check_and_normalize_vectors(df, "scaledFeatures")
 
-        # Remove the intermediate columns not needed for modeling
-        df = df.drop("rawFeatures")
+        # Applying PCA
+        pca = PCA(k=500, inputCol="scaledFeatures", outputCol="pcaFeatures")  # Using 500 components
+        df = pca.fit(df).transform(df)
 
-        print("Data load and preparated! \n")
+        # Cleanup intermediate columns not needed for modeling
+        df = df.drop("rawFeatures", "scaledFeatures")
+
+        print("Data loaded and prepared with PCA applied! \n")
 
         return df
+
+
 
     def configure_models(self):
         # Configurando o Logistic Regression
