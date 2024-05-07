@@ -15,6 +15,7 @@ from pyspark.ml.feature import VectorAssembler, StandardScaler, MinMaxScaler, PC
 from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
 
 
+
 def adjust_vector(vec, min_value):
     # Adiciona o valor absoluto do mínimo a cada elemento do vetor, se o mínimo for negativo
     if min_value < 0:
@@ -24,6 +25,7 @@ def adjust_vector(vec, min_value):
 
 # Registra a UDF
 adjust_vector_udf = udf(adjust_vector, VectorUDT())
+
 
 class SparkML:
     def __init__(self, data_path):
