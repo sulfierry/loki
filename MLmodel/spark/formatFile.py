@@ -1,18 +1,19 @@
+import os
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 from tqdm import tqdm
 from rdkit import Chem
-from rdkit.Chem import AllChem
-from sklearn.model_selection import train_test_split
 import concurrent.futures
-import os
-import pyarrow as pa
 import pyarrow.parquet as pq
+from rdkit.Chem import AllChem
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+
 
 class FormatFileML:
     def __init__(self, filepath):
         self.filepath = filepath
-
 
     def load_data(self):
         # Load only the necessary columns
@@ -33,7 +34,7 @@ class FormatFileML:
 
 
     @staticmethod
-    def smiles_to_fingerprints(smiles, radius=2, n_bits=2048):
+    def smiles_to_fingerprints(smiles, radius=2, n_bits=1024):
         if pd.isna(smiles):
             return [0] * n_bits  # Returns a null fingerprint if SMILES is NaN
         mol = Chem.MolFromSmiles(str(smiles))
@@ -51,7 +52,7 @@ class FormatFileML:
         return results
 
     def preprocess_data(self, data):
-        batch_size = 524288
+        batch_size = 65536
         fingerprints = []
 
         for i in tqdm(range(0, len(data), batch_size), desc="Processing batches"):
@@ -59,7 +60,15 @@ class FormatFileML:
             batch_fingerprints = self.convert_smiles_batch(batch['canonical_smiles'].tolist())
             fingerprints.extend(batch_fingerprints)
 
-        data['fingerprint'] = fingerprints
+        # Convert list of fingerprints to DataFrame
+        df_fingerprints = pd.DataFrame(fingerprints)
+
+        # Apply MinMaxScaler to normalize the fingerprints
+        scaler = MinMaxScaler()
+        normalized_fingerprints = scaler.fit_transform(df_fingerprints)
+
+        # Append normalized fingerprints back to the original DataFrame
+        data['fingerprint'] = list(normalized_fingerprints)
         return data
 
     @staticmethod
@@ -76,7 +85,7 @@ class FormatFileML:
 
 def main():
     # Initialize formatter with the path to the dataset
-    formatter = FormatFileML('../filtered_datase.tsv')
+    formatter = FormatFileML('./filtered_dataset.tsv')
 
     # Load data
     data = formatter.load_data()
