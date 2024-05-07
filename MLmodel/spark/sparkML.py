@@ -15,24 +15,17 @@ from pyspark.ml.feature import VectorAssembler, StandardScaler, MinMaxScaler, PC
 from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
 
 
+def correct_vector(vec):
+    # Corrige o vetor: substitui negativos e NaNs por zero e retorna um objeto Vector
+    corrected = [0 if x < 0 or isnan(x) else x for x in vec.toArray()]
+    return Vectors.dense(corrected)
 
-# UDF para converter vetor em array e corrigir valores
-def vector_to_corrected_array(vector):
-    # Corrige o vetor: substitui negativos e NaNs por zero
-    return [0 if x < 0 or isnan(x) else x for x in vector.toArray()]
-
-vector_to_corrected_array_udf = udf(vector_to_corrected_array, ArrayType(FloatType()))
+# Registra a UDF
+correct_vector_udf = udf(correct_vector, VectorUDT())
 
 def check_and_normalize_vectors(df, feature_col):
-    # Converte o vetor de características para array e aplica correções
-    df = df.withColumn("corrected_array", vector_to_corrected_array_udf(col(feature_col)))
-    
-    # Reassemble as características corrigidas de volta para um vetor
-    assembler = VectorAssembler(inputCols=["corrected_array"], outputCol="corrected_features")
-    df = assembler.transform(df)
-    
-    # Limpeza das colunas intermediárias
-    df = df.drop("corrected_array")
+    # Aplica a UDF para corrigir o vetor de características diretamente
+    df = df.withColumn("corrected_features", correct_vector_udf(col(feature_col)))
 
     return df
 
