@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 
 # pyspark sql
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import udf, col, when, isnan, array, count
 from pyspark.sql.types import FloatType, BooleanType, ArrayType, StringType
+from pyspark.sql.functions import udf, col, when, isnan, array, count, min as _min, max as _max
 
 # pyspark ml
 from pyspark.ml import Pipeline
@@ -13,7 +13,6 @@ from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 from pyspark.ml.feature import VectorAssembler, StandardScaler, MinMaxScaler, PCA, StringIndexer
 from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
-
 
 
 def correct_vector(vec):
@@ -60,35 +59,32 @@ class SparkML:
     def load_and_prepare_data(self):
         df = self.spark.read.parquet(self.data_path)
 
-        # Verificação adicional: garantir que 'target' existe e é uma string
         if "target" not in df.columns or not isinstance(df.schema["target"].dataType, StringType):
             raise ValueError("A coluna 'target' é necessária e deve ser do tipo string.")
 
-        # Indexando os rótulos que são strings
+
         label_indexer = StringIndexer(inputCol="target", outputCol="label")
         df = label_indexer.fit(df).transform(df)
 
-        # Assemble features into a single vector
         feature_columns = [f"feature_{i}" for i in range(2048)]
         assembler = VectorAssembler(inputCols=feature_columns, outputCol="rawFeatures")
         df = assembler.transform(df)
 
-        # Normalize features to be between 0 and 1
         scaler = MinMaxScaler(inputCol="rawFeatures", outputCol="scaledFeatures")
         df = scaler.fit(df).transform(df)
 
-        # Applying PCA
         pca = PCA(k=500, inputCol="scaledFeatures", outputCol="pcaFeatures")
         df = pca.fit(df).transform(df)
 
-        # Normalize again to ensure all PCA features are between 0 and 1
-        scaler_after_pca = MinMaxScaler(inputCol="pcaFeatures", outputCol="features")
+        # Shift all values to be non-negative before re-scaling
+        min_value = df.select(_min("pcaFeatures")).collect()[0][0]
+        shifted_features = when(col("pcaFeatures") + abs(min_value) < 0, 0).otherwise(col("pcaFeatures") + abs(min_value))
+        df = df.withColumn("shiftedFeatures", shifted_features)
+
+        scaler_after_pca = MinMaxScaler(inputCol="shiftedFeatures", outputCol="features")
         df = scaler_after_pca.fit(df).transform(df)
 
-        # Cleanup intermediate columns not needed for modeling
-        df = df.drop("rawFeatures", "scaledFeatures", "pcaFeatures")
-
-        print("Data loaded and prepared with PCA applied and features normalized! \n")
+        df = df.drop("rawFeatures", "scaledFeatures", "pcaFeatures", "shiftedFeatures")
 
         return df
 
