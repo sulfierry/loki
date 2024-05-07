@@ -15,6 +15,7 @@ from pyspark.ml.feature import VectorAssembler, StandardScaler, MinMaxScaler, PC
 from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
 
 
+
 def correct_vector(vec):
     # Corrige o vetor: substitui negativos e NaNs por zero e retorna um objeto Vector
     corrected = [0 if x < 0 or isnan(x) else x for x in vec.toArray()]
@@ -26,6 +27,8 @@ correct_vector_udf = udf(correct_vector, VectorUDT())
 def check_and_normalize_vectors(df, feature_col):
     # Aplica a UDF para corrigir o vetor de características diretamente
     df = df.withColumn("corrected_features", correct_vector_udf(col(feature_col)))
+
+    print("Vector checked and corrected! \n")
 
     return df
 
@@ -53,6 +56,7 @@ class SparkML:
         self.data_path = data_path
         self.df = self.load_and_prepare_data()
 
+
     def load_and_prepare_data(self):
         df = self.spark.read.parquet(self.data_path)
 
@@ -73,20 +77,20 @@ class SparkML:
         scaler = MinMaxScaler(inputCol="rawFeatures", outputCol="scaledFeatures")
         df = scaler.fit(df).transform(df)
 
-        # Apply corrections for any improper values
-        df = check_and_normalize_vectors(df, "scaledFeatures")
-
         # Applying PCA
         pca = PCA(k=500, inputCol="scaledFeatures", outputCol="pcaFeatures")  # Using 500 components
         df = pca.fit(df).transform(df)
 
+        # Após o PCA, remontamos o vetor de características finais para uso nos modelos
+        final_feature_assembler = VectorAssembler(inputCols=["pcaFeatures"], outputCol="features")
+        df = final_feature_assembler.transform(df)
+
         # Cleanup intermediate columns not needed for modeling
-        df = df.drop("rawFeatures", "scaledFeatures")
+        df = df.drop("rawFeatures", "scaledFeatures", "pcaFeatures")
 
         print("Data loaded and prepared with PCA applied! \n")
 
         return df
-
 
 
     def configure_models(self):
@@ -139,7 +143,7 @@ class SparkML:
 
 
     def train_and_evaluate_models(self):
-        print("Train and evaluate methodo start \n")
+        print("Train and evaluate method start \n")
 
         train, test = self.df.randomSplit([0.8, 0.2], seed=42)
         results = []
