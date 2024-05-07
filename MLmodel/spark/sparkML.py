@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 # pyspark sql
 from pyspark.sql import SparkSession
 from pyspark.sql.types import FloatType, BooleanType, ArrayType, StringType
-from pyspark.sql.functions import udf, col, when, isnan, array, count, min as _min, max as _max
+from pyspark.sql.functions import udf, col, when, isnan, array, count, min as _min, max as _max, lit
 
 # pyspark ml
 from pyspark.ml import Pipeline
@@ -15,21 +15,15 @@ from pyspark.ml.feature import VectorAssembler, StandardScaler, MinMaxScaler, PC
 from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
 
 
-def correct_vector(vec):
-    # Corrige o vetor: substitui negativos e NaNs por zero e retorna um objeto Vector
-    corrected = [0 if x < 0 or isnan(x) else x for x in vec.toArray()]
-    return Vectors.dense(corrected)
+def adjust_vector(vec, min_value):
+    # Adiciona o valor absoluto do mínimo a cada elemento do vetor, se o mínimo for negativo
+    if min_value < 0:
+        adjusted_values = [x + abs(min_value) for x in vec]
+        return Vectors.dense(adjusted_values)
+    return vec
 
 # Registra a UDF
-correct_vector_udf = udf(correct_vector, VectorUDT())
-
-def check_and_normalize_vectors(df, feature_col):
-    # Aplica a UDF para corrigir o vetor de características diretamente
-    df = df.withColumn("corrected_features", correct_vector_udf(col(feature_col)))
-
-    print("Vector checked and corrected! \n")
-
-    return df
+adjust_vector_udf = udf(adjust_vector, VectorUDT())
 
 class SparkML:
     def __init__(self, data_path):
@@ -59,9 +53,9 @@ class SparkML:
     def load_and_prepare_data(self):
         df = self.spark.read.parquet(self.data_path)
 
+        # Correção aqui: Usando StringType corretamente
         if "target" not in df.columns or not isinstance(df.schema["target"].dataType, StringType):
             raise ValueError("A coluna 'target' é necessária e deve ser do tipo string.")
-
 
         label_indexer = StringIndexer(inputCol="target", outputCol="label")
         df = label_indexer.fit(df).transform(df)
@@ -76,18 +70,12 @@ class SparkML:
         pca = PCA(k=500, inputCol="scaledFeatures", outputCol="pcaFeatures")
         df = pca.fit(df).transform(df)
 
-        # Shift all values to be non-negative before re-scaling
-        min_value = df.select(_min("pcaFeatures")).collect()[0][0]
-        shifted_features = when(col("pcaFeatures") + abs(min_value) < 0, 0).otherwise(col("pcaFeatures") + abs(min_value))
-        df = df.withColumn("shiftedFeatures", shifted_features)
-
-        scaler_after_pca = MinMaxScaler(inputCol="shiftedFeatures", outputCol="features")
+        scaler_after_pca = MinMaxScaler(inputCol="pcaFeatures", outputCol="features")
         df = scaler_after_pca.fit(df).transform(df)
 
-        df = df.drop("rawFeatures", "scaledFeatures", "pcaFeatures", "shiftedFeatures")
+        df = df.drop("rawFeatures", "scaledFeatures", "pcaFeatures")
 
         return df
-
 
     def configure_models(self):
         # Configurando o Logistic Regression
