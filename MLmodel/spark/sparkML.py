@@ -78,17 +78,17 @@ class SparkML:
         df = scaler.fit(df).transform(df)
 
         # Applying PCA
-        pca = PCA(k=500, inputCol="scaledFeatures", outputCol="pcaFeatures")  # Using 500 components
+        pca = PCA(k=500, inputCol="scaledFeatures", outputCol="pcaFeatures")
         df = pca.fit(df).transform(df)
 
-        # Após o PCA, remontamos o vetor de características finais para uso nos modelos
-        final_feature_assembler = VectorAssembler(inputCols=["pcaFeatures"], outputCol="features")
-        df = final_feature_assembler.transform(df)
+        # Normalize again to ensure all PCA features are between 0 and 1
+        scaler_after_pca = MinMaxScaler(inputCol="pcaFeatures", outputCol="features")
+        df = scaler_after_pca.fit(df).transform(df)
 
         # Cleanup intermediate columns not needed for modeling
         df = df.drop("rawFeatures", "scaledFeatures", "pcaFeatures")
 
-        print("Data loaded and prepared with PCA applied! \n")
+        print("Data loaded and prepared with PCA applied and features normalized! \n")
 
         return df
 
