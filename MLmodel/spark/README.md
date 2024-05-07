@@ -40,34 +40,68 @@ Key functionalities:
 - Train and evaluate models using cross-validation and save the best-performing models.
 - Plot and compare the accuracy of different models using matplotlib.
 
-# Workflow Description of `sparkML.py`
+### Workflow Description of `sparkML.py`
 
 The `sparkML.py` script processes data through a series of steps designed to prepare it for machine learning modeling efficiently and effectively. Below is a detailed description of each step and the overall data flow:
 
-## 1. Data Input
+#### 1. Data Input
 - The script begins by reading raw data from a Parquet file. This data includes various features (`feature_0, feature_1, ..., feature_2047`) and a target column (`target`).
 
-## 2. Label Indexing
+#### 2. Label Indexing
 - `StringIndexer` is applied to transform the `target` column from strings to numerical indices, which are necessary for use in machine learning algorithms expecting numerical labels.
 
-## 3. Feature Assembly
+#### 3. Feature Assembly
 - A `VectorAssembler` combines all individual features (`feature_0` to `feature_2047`) into a single vector column (`rawFeatures`).
 
-## 4. Normalization
+#### 4. Normalization
 - `MinMaxScaler` is used to scale the values in the `rawFeatures` column, resulting in a new column of normalized features (`scaledFeatures`).
 
-## 5. Dimensionality Reduction (PCA)
+#### 5. Dimensionality Reduction (PCA)
 - PCA is applied to the `scaledFeatures` column to reduce the dimensionality of the data, producing a representation in a lower-dimensional latent space (`pcaFeatures`). The number of principal components is set to 500.
 
-## 6. Final Feature Assembly
+#### 6. Final Feature Assembly
 - A second `VectorAssembler` is utilized to assemble the `pcaFeatures` into a single final vector column named `features`, which is the final output ready for use in machine learning models.
 
-## 7. Final Output
+#### 7. Final Output
 - The `features` column contains the final feature vectors prepared for training or predictions in models. Intermediate columns are removed to clean up the DataFrame.
 
-## Data Workflow Diagram
+#### Data Workflow Diagram
 
 Here is a visual representation of the data workflow in `sparkML.py`:
+
++----------------+       +------------------+       +--------------------+
+| Dados Iniciais | ----> | Indexação de     | ----> | Montagem de        |
+| (Parquet File) |       | Rótulos (target) |       | Características    |
++----------------+       +------------------+       | (rawFeatures)      |
+                                                     +--------------------+
+                                                                   |
+                                                                   v
+                                                     +---------------------+
+                                                     | Normalização        |
+                                                     | (MinMaxScaler)      |
+                                                     | -> scaledFeatures   |
+                                                     +---------------------+
+                                                                   |
+                                                                   v
+                                                     +---------------------+
+                                                     | PCA (Redução de     |
+                                                     | Dimensionalidade)   |
+                                                     | -> pcaFeatures      |
+                                                     +---------------------+
+                                                                   |
+                                                                   v
+                                                     +---------------------+
+                                                     | Montagem Final      |
+                                                     | (VectorAssembler)   |
+                                                     | -> features         |
+                                                     +---------------------+
+                                                                   |
+                                                                   v
+                                                     +---------------------+
+                                                     | Output Final para   |
+                                                     | Modelagem           |
+                                                     +---------------------+
+
 
 These classes are part of a larger framework designed to streamline the workflow from raw data processing to machine learning model training and evaluation, making it well-suited for projects involving large datasets and complex machine learning tasks.
 
