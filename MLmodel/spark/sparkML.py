@@ -82,7 +82,7 @@ class SparkML:
         df = self.spark.read.parquet(self.data_path)
 
         # Verificação adicional: garantir que 'target' existe e é uma string
-        if "target" not in df.columns or not isinstance(df.schema["target"].dataType, StringType()):
+        if "target" not in df.columns or not isinstance(df.schema["target"].dataType, StringType):
             raise ValueError("A coluna 'target' é necessária e deve ser do tipo string.")
 
         # Indexando os rótulos que são strings
@@ -108,9 +108,6 @@ class SparkML:
         print("Data load and preparated! \n")
 
         return df
-
-
-
 
     def configure_models(self):
         # Configurando o Logistic Regression
@@ -144,7 +141,7 @@ class SparkML:
                        .addGrid(naive_bayes.smoothing, [1.0])  # Suavização
                        .build())
 
-        print("Configuring ond-vs-rest \n")
+        print("Configuring one-vs-rest \n")
         # Configurando o One-vs-Rest
         one_vs_rest = OneVsRest(classifier=logistic_regression)
         ovrParamGrid = (ParamGridBuilder()
@@ -160,9 +157,10 @@ class SparkML:
             ("One-vs-Rest", one_vs_rest, ovrParamGrid)
         ]        
 
+
     def train_and_evaluate_models(self):
         print("Train and evaluate methodo start \n")
-        
+
         train, test = self.df.randomSplit([0.8, 0.2], seed=42)
         results = []
         model_directory = "saved_models"
