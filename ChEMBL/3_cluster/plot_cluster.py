@@ -6,6 +6,7 @@ from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 import matplotlib
 import seaborn as sns
+from tqdm import tqdm  # Importando tqdm
 
 class PlotCluster:
     def __init__(self, filepath):
@@ -17,7 +18,8 @@ class PlotCluster:
         return AllChem.GetMorganFingerprintAsBitVect(mol, radius, nBits) if mol else None
 
     def prepare_data(self):
-        self.data['fingerprint'] = self.data['canonical_smiles'].apply(self.smiles_to_fp)
+        # Adicionando tqdm para monitorar o progresso
+        self.data['fingerprint'] = [self.smiles_to_fp(smiles) for smiles in tqdm(self.data['canonical_smiles'], desc='Converting SMILES to Fingerprints')]
         fp_list = list(self.data['fingerprint'])
         fp_array = np.array([list(fp) for fp in fp_list if fp is not None])
         return fp_array
