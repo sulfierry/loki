@@ -136,6 +136,6 @@ Key features of the script:
 - Computing distance using Hamming and Manhattan metrics.
 - Generating histograms to display the distributions of these similarity and distance measures.
 
-![Alt text da image](https://github.com/sulfierry/loki/blob/main/ChEMBL/violin_plots_all.png)
+![Alt text da image](https://github.com/sulfierry/loki/blob/main/ChEMBL/4_histogram/violin_plots_all.png)
 
 This script is particularly useful for assessing the overall structural diversity and similarity within a molecular dataset.
