@@ -126,7 +126,7 @@ Highlights of this script include:
 
 This script offers an insightful approach to understand molecular diversity and similarity in large datasets.
 
-# Histograms for molecular similarity and distance
+# Distribution of molecular similarity and distance
 
 The `histogram.py` script compares molecular fingerprints in an all-against-all approach, computing similarity and distance measures for every pair of molecules in the dataset. It processes fingerprints in batches to efficiently manage memory and computational resources.
 
