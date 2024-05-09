@@ -30,27 +30,6 @@ class PlotCluster:
         self.data['tsne-2d-one'] = tsne_results[:, 0]
         self.data['tsne-2d-two'] = tsne_results[:, 1]
 
-    def plot_clusters(self):
-        # Define color palette
-        kinase_groups = self.data['kinase_group'].unique()
-        colors = matplotlib.colormaps['tab20'](np.linspace(0, 1, len(kinase_groups)))
-        color_map = {group: color for group, color in zip(kinase_groups, colors)}
-
-        # Plot
-        plt.figure(figsize=(16, 10))
-        sns.scatterplot(
-            x="tsne-2d-one", y="tsne-2d-two",
-            hue="kinase_group",
-            palette=color_map,
-            data=self.data,
-            legend="full",
-            alpha=1.0
-        )
-        plt.title('t-SNE colored by Kinase Groups')
-        plt.legend(bbox_to_anchor=(1, 1), loc=2, borderaxespad=0.)
-        plt.savefig('tsne_colored_by_kinase_group.png')
-        plt.show()
-
     def plot_kinase_clusters_only(self):
         # Filter out non-kinase groups
         kinase_only_groups = ['Nuclear', 'Membrane receptor', 'Transferase', 'Other', 'Lyase']
@@ -64,16 +43,16 @@ class PlotCluster:
         # Plot
         plt.figure(figsize=(16, 10))
         sns.scatterplot(
-            x="tsne-2d-one", y="tsne-2d-two",
+            x="t-SNE 1", y="t-SNE 2",
             hue="kinase_group",
             palette=color_map,
             data=filtered_data,
             legend="full",
             alpha=1.0
         )
-        plt.title('t-SNE excluding Non-Kinase Groups')
+        plt.title('t-SNE embedding of chemical space')
         plt.legend(bbox_to_anchor=(1, 1), loc=2, borderaxespad=0.)
-        plt.savefig('tsne_excluding_non_kinase_groups.png')
+        plt.savefig('tsne_kinase_groups.png')
         plt.show()
 
         # Save the filtered data to a TSV file
