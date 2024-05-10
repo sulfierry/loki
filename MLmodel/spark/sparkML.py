@@ -15,6 +15,8 @@ from pyspark.ml.feature import VectorAssembler, StandardScaler, MinMaxScaler, PC
 from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
 
 
+NUM_FETAURES = 3072
+PCA_NUMB = NUM_FETAURES
 
 def adjust_vector(vec, min_value):
     # Adiciona o valor absoluto do mínimo a cada elemento do vetor, se o mínimo for negativo
@@ -31,19 +33,19 @@ class SparkML:
     def __init__(self, data_path):
         self.spark = SparkSession.builder \
             .appName("Advanced Spark ML with Multiple Metrics and Models") \
-            .master("local[32]") \
-            .config("spark.driver.memory", "32g") \
-            .config("spark.executor.memory", "32g") \
-            .config("spark.executor.instances", "1") \
-            .config("spark.executor.cores", "16") \
+            .master("local[96]") \
+            .config("spark.driver.memory", "60g") \
+            .config("spark.executor.memory", "60g") \
+            .config("spark.executor.instances", "8") \
+            .config("spark.executor.cores", "12") \
             .config("spark.memory.fraction", "0.8") \
-            .config("spark.executor.memoryOverhead", "4g") \
+            .config("spark.executor.memoryOverhead", "10g") \
             .config("spark.memory.offHeap.enabled", "true") \
-            .config("spark.memory.offHeap.size", "8g") \
+            .config("spark.memory.offHeap.size", "16g") \
             .config("spark.executor.extraJavaOptions", "-XX:+UseG1GC") \
             .config("spark.sql.debug.maxToStringFields", "200") \
             .config("spark.sql.autoBroadcastJoinThreshold", "-1") \
-            .config("spark.driver.maxResultSize", "2g") \
+            .config("spark.driver.maxResultSize", "4g") \
             .config("spark.sql.shuffle.partitions", "200") \
             .config("spark.default.parallelism", "64") \
             .getOrCreate()
@@ -62,14 +64,14 @@ class SparkML:
         label_indexer = StringIndexer(inputCol="target", outputCol="label")
         df = label_indexer.fit(df).transform(df)
 
-        feature_columns = [f"feature_{i}" for i in range(2048)]
+        feature_columns = [f"feature_{i}" for i in range(NUM_FETAURES)]
         assembler = VectorAssembler(inputCols=feature_columns, outputCol="rawFeatures")
         df = assembler.transform(df)
 
         scaler = MinMaxScaler(inputCol="rawFeatures", outputCol="scaledFeatures")
         df = scaler.fit(df).transform(df)
 
-        pca = PCA(k=500, inputCol="scaledFeatures", outputCol="pcaFeatures")
+        pca = PCA(k=PCA_NUMB, inputCol="scaledFeatures", outputCol="pcaFeatures")
         df = pca.fit(df).transform(df)
 
         scaler_after_pca = MinMaxScaler(inputCol="pcaFeatures", outputCol="features")
