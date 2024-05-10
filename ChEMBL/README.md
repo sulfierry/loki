@@ -14,6 +14,14 @@ This script performs SQL queries in the ChEMBL database to retrieve kinase-relat
 
 #### Script execution
 ```sql
+CREATE TABLE kinase_group_activity_counts AS
+SELECT kg.kinase_group, COUNT(*) AS count_kinase_group
+FROM kinase_groups kg
+JOIN assays a ON kg.tid = a.tid
+JOIN activities act ON a.assay_id = act.assay_id
+GROUP BY kg.kinase_group;
+
+
 CREATE TABLE public.smile_kinase_all_compounds AS
 SELECT DISTINCT
     d.chembl_id,
@@ -43,7 +51,7 @@ WHERE
     act.standard_units = 'nM' AND
     (act.data_validity_comment IS NULL OR act.data_validity_comment = 'Manually validated');
 
-\COPY public.smile_kinase_all_compounds TO '/path/to/save/kinase_all_compounds.tsv' WITH (FORMAT csv, HEADER, DELIMITER E'\t');
+\COPY public.smile_kinase_all_compounds TO '/path/to/file/kinase_all_compounds.tsv' WITH (FORMAT csv, HEADER, DELIMITER E'\t');
 ```
 
 ## 2. Python post-processing script - remove_redundance.py:
