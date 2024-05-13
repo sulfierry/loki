@@ -1,19 +1,24 @@
-import os
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 from tqdm import tqdm
 from rdkit import Chem
-import concurrent.futures
-import pyarrow.parquet as pq
 from rdkit.Chem import AllChem
-from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
+import concurrent.futures
+import os
+import pyarrow as pa
+import pyarrow.parquet as pq
+from sklearn.preprocessing import MinMaxScaler
 
+
+INPUT_FILE = './filtered_dataset.tsv'
+FINGER_PRINT_BITS = 4
+BATCH_SIZE = 63488
 
 class FormatFileML:
     def __init__(self, filepath):
         self.filepath = filepath
+
 
     def load_data(self):
         # Load only the necessary columns
@@ -34,7 +39,7 @@ class FormatFileML:
 
 
     @staticmethod
-    def smiles_to_fingerprints(smiles, radius=2, n_bits=1024):
+    def smiles_to_fingerprints(smiles, radius=2, n_bits=FINGER_PRINT_BITS):
         if pd.isna(smiles):
             return [0] * n_bits  # Returns a null fingerprint if SMILES is NaN
         mol = Chem.MolFromSmiles(str(smiles))
@@ -43,16 +48,17 @@ class FormatFileML:
         return [0] * n_bits
 
     @staticmethod
-    def convert_smiles_batch(smiles_list, radius=2, n_bits=2048):
+    def convert_smiles_batch(smiles_list, radius=2, n_bits=FINGER_PRINT_BITS):
         """ Convert a batch of SMILES to fingerprints using multiple processes. """
         with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
             results = list(tqdm(executor.map(FormatFileML.smiles_to_fingerprints, smiles_list,
                                              [radius] * len(smiles_list), [n_bits] * len(smiles_list)),
                                total=len(smiles_list), desc="Converting SMILES"))
         return results
+        
 
     def preprocess_data(self, data):
-        batch_size = 65536
+        batch_size = BATCH_SIZE
         fingerprints = []
 
         for i in tqdm(range(0, len(data), batch_size), desc="Processing batches"):
@@ -71,6 +77,7 @@ class FormatFileML:
         data['fingerprint'] = list(normalized_fingerprints)
         return data
 
+
     @staticmethod
     def split_data(data):
         X = np.array(data['fingerprint'].tolist())
@@ -85,7 +92,7 @@ class FormatFileML:
 
 def main():
     # Initialize formatter with the path to the dataset
-    formatter = FormatFileML('./filtered_dataset.tsv')
+    formatter = FormatFileML(INPUT_FILE)
 
     # Load data
     data = formatter.load_data()
