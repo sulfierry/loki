@@ -7,23 +7,28 @@ from pyspark.sql.types import StringType
 from pyspark.ml import Pipeline
 from pyspark.ml.linalg import Vectors, VectorUDT
 from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
-from pyspark.ml.evaluation import MulticlassClassificationEvaluator, BinaryClassificationEvaluator
+from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 from pyspark.ml.feature import VectorAssembler, MinMaxScaler, StringIndexer
 from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
-from pyspark.mllib.evaluation import MulticlassMetrics, BinaryClassificationMetrics
-from pyspark.sql.functions import udf, col
-from pyspark.sql import functions as F
+from pyspark.mllib.evaluation import MulticlassMetrics
+from pyspark.sql.functions import udf, col, least
+import logging
 
+# Configuração do nível de logging
+logging.getLogger("py4j").setLevel(logging.ERROR)
+logging.getLogger("org.apache.spark").setLevel(logging.ERROR)
 
 NUM_FEATURES = 4096
 
-def adjust_vector(vec, min_value):
-    if min_value < 0:
-        adjusted_values = [x + abs(min_value) for x in vec]
+# Variável global para armazenar o valor mínimo
+min_value_global = None
+
+def adjust_vector(vec):
+    global min_value_global
+    if min_value_global < 0:
+        adjusted_values = [x + abs(min_value_global) for x in vec]
         return Vectors.dense(adjusted_values)
     return vec
-
-adjust_vector_udf = udf(adjust_vector, VectorUDT())
 
 class SparkML:
     def __init__(self, data_path):
@@ -44,6 +49,10 @@ class SparkML:
             .config("spark.sql.shuffle.partitions", "100") \
             .config("spark.default.parallelism", "48") \
             .getOrCreate()
+        
+        # Definindo o nível de log para WARN
+        self.spark.sparkContext.setLogLevel("WARN")
+        
         self.data_path = data_path
         self.df = self.load_and_prepare_data()
 
@@ -61,13 +70,20 @@ class SparkML:
         assembler = VectorAssembler(inputCols=feature_columns, outputCol="features")
         df = assembler.transform(df)
 
+        # Calculando o valor mínimo global para ajustar o vetor
+        global min_value_global
+        min_value_global = df.select(least(*[col(f) for f in feature_columns]).alias("min_value")).first()["min_value"]
+
+        # Registrando a UDF com o valor mínimo calculado
+        adjust_vector_udf = udf(adjust_vector, VectorUDT())
+        df = df.withColumn("features", adjust_vector_udf(col("features")))
+
         # Escalando os recursos
         scaler = MinMaxScaler(inputCol="features", outputCol="scaledFeatures")
         df = scaler.fit(df).transform(df)
 
         # Removendo colunas desnecessárias e renomeando as colunas escaladas de volta para 'features'
         return df.drop("features").withColumnRenamed("scaledFeatures", "features")
-
 
     def configure_models(self):
         logistic_regression = LogisticRegression(featuresCol='features', labelCol='label', family='multinomial')
@@ -132,14 +148,38 @@ class SparkML:
         return results
 
     def plot_metrics(self, results):
-        fig, ax = plt.subplots(figsize=(10, 6))
-        models = [x[0] for x in results]
-        accuracies = [x[1] for x in results]
-        ax.barh(models, accuracies, color='skyblue')
-        ax.set_title('Model Accuracy Comparison')
-        ax.set_xlabel('Accuracy')
-        plt.tight_layout()
-        plt.show()
+        metrics = ['Accuracy', 'Precision', 'Recall', 'F1 Score']
+        model_directory = "saved_models"
+        comparison_data = {metric: [] for metric in metrics}
+
+        for name, accuracy, precision, recall, f1, _ in results:
+            model_path = os.path.join(model_directory, f"model_{name.replace(' ', '_').lower()}")
+            metric_values = [accuracy, precision, recall, f1]
+
+            for metric, value in zip(metrics, metric_values):
+                plt.figure(figsize=(8, 6))
+                plt.bar(name, value, color='skyblue')
+                plt.title(f'{metric} for {name}')
+                plt.xlabel('Model')
+                plt.ylabel(metric)
+                metric_plot_path = os.path.join(model_path, f"{metric.lower()}_plot.png")
+                plt.savefig(metric_plot_path)
+                plt.close()
+
+                comparison_data[metric].append((name, value))
+
+        # Plotting comparative metrics for all models
+        for metric in metrics:
+            plt.figure(figsize=(10, 6))
+            model_names = [x[0] for x in comparison_data[metric]]
+            metric_values = [x[1] for x in comparison_data[metric]]
+            plt.barh(model_names, metric_values, color='skyblue')
+            plt.title(f'Model Comparison - {metric}')
+            plt.xlabel(metric)
+            plt.tight_layout()
+            comparison_plot_path = os.path.join(model_directory, f"comparison_{metric.lower()}_plot.png")
+            plt.savefig(comparison_plot_path)
+            plt.close()
 
 def main():
     data_path = './train_data.parquet'
