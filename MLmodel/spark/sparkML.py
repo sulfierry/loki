@@ -16,12 +16,14 @@ from sklearn.metrics import confusion_matrix
 
 NUM_FEATURES = 16
 
+# Função para ajustar o vetor para garantir que todos os valores sejam positivos
 def adjust_vector(vec, min_value):
     if min_value < 0:
         adjusted_values = [x + abs(min_value) for x in vec]
         return Vectors.dense(adjusted_values)
     return vec
 
+# Definir uma função UDF (User Defined Function) para o ajuste de vetores
 adjust_vector_udf = udf(adjust_vector, VectorUDT())
 
 class SparkML:
@@ -30,6 +32,7 @@ class SparkML:
         num_cores = psutil.cpu_count(logical=True)
         total_memory = psutil.virtual_memory().total // (1024 ** 3)  # Convertendo para GB
 
+        # Configurar a sessão Spark com parâmetros específicos para desempenho
         self.spark = SparkSession.builder \
             .appName("Advanced Spark ML with Multiple Metrics and Models") \
             .master(f"local[{num_cores}]") \
@@ -52,26 +55,33 @@ class SparkML:
         self.data_path = data_path
         self.df = self.load_and_prepare_data()
 
+    # Função para carregar e preparar os dados
     def load_and_prepare_data(self):
         df = self.spark.read.parquet(self.data_path)
 
+        # Verificar se a coluna 'target' existe e é do tipo string
         if "target" not in df.columns or not isinstance(df.schema["target"].dataType, StringType):
             raise ValueError("A coluna 'target' é necessária e deve ser do tipo string.")
 
+        # Indexar a coluna de rótulo
         label_indexer = StringIndexer(inputCol="target", outputCol="label")
         df = label_indexer.fit(df).transform(df)
 
+        # Criar uma lista de nomes de colunas de características
         feature_columns = [f"feature_{i}" for i in range(NUM_FEATURES)]
         assembler = VectorAssembler(inputCols=feature_columns, outputCol="rawFeatures")
         df = assembler.transform(df)
 
+        # Escalar os valores das características para ficarem entre 0 e 1
         scaler = MinMaxScaler(inputCol="rawFeatures", outputCol="features")
         df = scaler.fit(df).transform(df)
 
+        # Remover a coluna de características não escaladas
         df = df.drop("rawFeatures")
 
         return df
 
+    # Função para configurar os modelos de machine learning e seus parâmetros de grade
     def configure_models(self):
         logistic_regression = LogisticRegression(featuresCol='features', labelCol='label', family='multinomial')
         lrParamGrid = (ParamGridBuilder()
@@ -109,13 +119,16 @@ class SparkML:
             ("One-vs-Rest", one_vs_rest, ovrParamGrid)
         ]
 
+    # Função para treinar e avaliar os modelos
     def train_and_evaluate_models(self):
+        # Dividir os dados em conjuntos de treinamento e teste
         train, test = self.df.randomSplit([0.8, 0.2], seed=42)
         results = []
         model_directory = "saved_models"
         if not os.path.exists(model_directory):
             os.makedirs(model_directory)
 
+        # Definir as métricas de avaliação
         metrics = ['accuracy', 'weightedPrecision', 'weightedRecall', 'f1']
         evaluators = {metric: MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName=metric) for metric in metrics}
 
@@ -135,6 +148,7 @@ class SparkML:
             results.append((name, model_metrics, cvModel))
             print(f"{name} - Metrics: {model_metrics}")
 
+        # Ordenar os resultados pela precisão e salvar os três melhores modelos
         results.sort(key=lambda x: x[1]['accuracy'], reverse=True)
         top_models = results[:3]
         for i, (name, model_metrics, model) in enumerate(top_models):
@@ -144,6 +158,7 @@ class SparkML:
 
         return results
 
+    # Função para plotar e salvar os gráficos das métricas de avaliação
     def plot_metrics(self, results):
         metrics = ['accuracy', 'weightedPrecision', 'weightedRecall', 'f1']
         metric_colors = {
@@ -165,6 +180,7 @@ class SparkML:
             plt.savefig(f"metric_{metric}.png")
             plt.show()
 
+        # Plotar todas as métricas em um único gráfico
         fig, axes = plt.subplots(2, 2, figsize=(15, 15))
         for i, metric in enumerate(metrics):
             ax = axes[i//2, i%2]
