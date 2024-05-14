@@ -178,16 +178,29 @@ class SparkML:
         recall = [result[3] for result in results]
         f1_score = [result[4] for result in results]
 
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        for name, _, _, _, _, _ in results:
+            model_path = os.path.join("saved_models", f"model_{name.replace(' ', '_').lower()}")
+            if not os.path.exists(model_path):
+                os.makedirs(model_path)
 
-        for ax, metric, data, color in zip(axes.flatten(), metrics, [accuracy, precision, recall, f1_score], colors):
-            ax.barh(models, data, color=color)
-            ax.set_title(f'{metric} Comparison')
-            ax.set_xlabel(metric)
-            ax.set_xlim(0, 1.0)
+        for metric, data, color in zip(metrics, [accuracy, precision, recall, f1_score], colors):
+            for name, value in zip(models, data):
+                plt.figure(figsize=(10, 6))
+                plt.barh([name], [value], color=color)
+                plt.title(f'{metric} Comparison for {name}')
+                plt.xlabel(metric)
+                plt.xlim(0, 1.0)
+                plt.tight_layout()
+                model_path = os.path.join("saved_models", f"model_{name.replace(' ', '_').lower()}")
+                plt.savefig(os.path.join(model_path, f"{metric.lower()}_comparison.png"))
+                plt.close()
 
-        plt.tight_layout()
-        plt.show()
+        metrics_data = {
+            'Accuracy': accuracy,
+            'Precision': precision,
+            'Recall': recall,
+            'F1 Score': f1_score
+        }
 
         for metric, data, color in zip(metrics, [accuracy, precision, recall, f1_score], colors):
             plt.figure(figsize=(10, 6))
@@ -196,14 +209,8 @@ class SparkML:
             plt.xlabel(metric)
             plt.xlim(0, 1.0)
             plt.tight_layout()
-            plt.show()
-
-        metrics_data = {
-            'Accuracy': accuracy,
-            'Precision': precision,
-            'Recall': recall,
-            'F1 Score': f1_score
-        }
+            plt.savefig(os.path.join("saved_models", f"{metric.lower()}_comparison_all.png"))
+            plt.close()
 
         for metric in metrics:
             plt.figure(figsize=(10, 6))
@@ -215,7 +222,9 @@ class SparkML:
             plt.legend()
             plt.grid(True)
             plt.tight_layout()
-            plt.show()
+            plt.savefig(os.path.join("saved_models", f"{metric.lower()}_for_all_models.png"))
+            plt.close()
+
 
 def main():
     data_path = './train_data.parquet'
