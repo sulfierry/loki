@@ -1,3 +1,11 @@
+"""
+    Este código define uma classe chamada SparkML que configura, treina e avalia vários modelos de machine learning usando o PySpark. 
+    A classe utiliza um conjunto de dados de entrada, realiza a preparação dos dados, configura diferentes modelos de classificação 
+    (Regressão Logística, Random Forest, Árvore de Decisão, Naive Bayes e One-vs-Rest), realiza a validação cruzada para ajustar 
+    hiperparâmetros, avalia os modelos usando várias métricas (precisão, precisão ponderada, recall ponderado e F1 score), salva as 
+    melhores configurações de modelo e gera gráficos comparando as métricas de desempenho dos modelos.
+"""
+
 import os
 import psutil
 import matplotlib.pyplot as plt
