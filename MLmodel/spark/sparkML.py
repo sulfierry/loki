@@ -205,7 +205,7 @@ class SparkML:
             ax.set_xlim(0, 1.0)
             plt.tight_layout()
             plt.savefig(f"metric_{metric}.png")
-            plt.show()
+            # plt.show()
 
         fig, axes = plt.subplots(2, 2, figsize=(15, 15))
         for i, metric in enumerate(metrics):
@@ -220,7 +220,7 @@ class SparkML:
             ax.set_xticklabels(models, rotation=45, ha='right')
         plt.tight_layout()
         plt.savefig("all_metrics.png")
-        plt.show()
+        # plt.show()
 
 def main():
     data_path = './train_data.parquet'
