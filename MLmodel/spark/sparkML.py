@@ -22,7 +22,7 @@ from pyspark.ml.feature import VectorAssembler, MinMaxScaler, StringIndexer
 from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
 from sklearn.metrics import confusion_matrix
 
-NUM_FEATURES = 5120
+NUM_FEATURES = 6144
 
 def adjust_vector(vec, min_value):
     if min_value < 0:
@@ -66,8 +66,16 @@ class SparkML:
         if "target" not in df.columns or not isinstance(df.schema["target"].dataType, StringType):
             raise ValueError("A coluna 'target' é necessária e deve ser do tipo string.")
 
+        # Verificar rótulos originais
+        print("Distribuição dos rótulos originais:")
+        df.groupBy("target").count().show()
+
         label_indexer = StringIndexer(inputCol="target", outputCol="label")
         df = label_indexer.fit(df).transform(df)
+
+        # Verificar rótulos após a indexação
+        print("Distribuição dos rótulos após a indexação:")
+        df.groupBy("label").count().show()
 
         feature_columns = [f"feature_{i}" for i in range(NUM_FEATURES)]
         assembler = VectorAssembler(inputCols=feature_columns, outputCol="rawFeatures")
@@ -82,6 +90,7 @@ class SparkML:
 
     def configure_models(self):
         logistic_regression = LogisticRegression(featuresCol='features', labelCol='label', family='multinomial')
+        ovr_logistic_regression = OneVsRest(classifier=logistic_regression)
         lrParamGrid = (ParamGridBuilder()
                        .addGrid(logistic_regression.regParam, [0.1, 0.01])
                        .addGrid(logistic_regression.elasticNetParam, [0.1, 0.01])
@@ -111,10 +120,10 @@ class SparkML:
 
         return [
             ("Random Forest", random_forest, rfParamGrid),
-            ("Logistic Regression", logistic_regression, lrParamGrid),
+            ("Logistic Regression", ovr_logistic_regression, lrParamGrid),
             ("Decision Tree", decision_tree, dtParamGrid),
             ("Naive Bayes", naive_bayes, nbParamGrid),
-            ("One-vs-Rest", one_vs_rest, ovrParamGrid)
+            ("One-vs-Rest Logistic Regression", one_vs_rest, ovrParamGrid)
         ]
 
     def train_and_evaluate_models(self):
@@ -128,10 +137,16 @@ class SparkML:
         evaluators = {metric: MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName=metric) for metric in metrics}
 
         for name, model, paramGrid in self.configure_models():
-            crossval = CrossValidator(estimator=model, estimatorParamMaps=paramGrid, evaluator=evaluators['accuracy'], numFolds=5)
+            crossval = CrossValidator(estimator=model, estimatorParamMaps=paramGrid, evaluator=evaluators['accuracy'], numFolds=5, parallelism=psutil.cpu_count(logical=True))
             cvModel = crossval.fit(train)
+
+            # Avaliação no conjunto de treino
+            train_pred = cvModel.transform(train)
+            train_metrics = {metric: evaluators[metric].evaluate(train_pred) for metric in metrics}
+
+            # Avaliação no conjunto de teste
             test_pred = cvModel.transform(test)
-            model_metrics = {metric: evaluators[metric].evaluate(test_pred) for metric in metrics}
+            test_metrics = {metric: evaluators[metric].evaluate(test_pred) for metric in metrics}
 
             # Calcular e salvar a matriz de confusão
             y_true = [int(row['label']) for row in test.select('label').collect()]
@@ -140,15 +155,16 @@ class SparkML:
             cm_df = pd.DataFrame(cm)
             cm_df.to_csv(os.path.join(model_directory, f"confusion_matrix_{name.replace(' ', '_').lower()}.csv"), index=False)
 
-            results.append((name, model_metrics, cvModel))
-            print(f"{name} - Metrics: {model_metrics}")
+            results.append((name, train_metrics, test_metrics, cvModel))
+            print(f"{name} - Train Metrics: {train_metrics}")
+            print(f"{name} - Test Metrics: {test_metrics}")
 
-        results.sort(key=lambda x: x[1]['accuracy'], reverse=True)
+        results.sort(key=lambda x: x[2]['accuracy'], reverse=True)  # Ordenar pela acurácia do teste
         top_models = results[:3]
-        for i, (name, model_metrics, model) in enumerate(top_models):
+        for i, (name, train_metrics, test_metrics, model) in enumerate(top_models):
             model_path = os.path.join(model_directory, f"model_{name.replace(' ', '_').lower()}")
             model.bestModel.save(model_path)
-            print(f"Top {i+1} Model: {name} with accuracy: {model_metrics['accuracy']} saved to {model_path}")
+            print(f"Top {i+1} Model: {name} with test accuracy: {test_metrics['accuracy']} saved to {model_path}")
 
         return results
 
@@ -164,7 +180,7 @@ class SparkML:
         for metric in metrics:
             fig, ax = plt.subplots(figsize=(10, 6))
             models = [result[0] for result in results]
-            metric_values = [result[1][metric] for result in results]
+            metric_values = [result[2][metric] for result in results]  # Métricas de teste
             ax.barh(models, metric_values, color=metric_colors[metric])
             ax.set_title(f'Model {metric.capitalize()} Comparison')
             ax.set_xlabel(metric.capitalize())
@@ -177,7 +193,7 @@ class SparkML:
         for i, metric in enumerate(metrics):
             ax = axes[i//2, i%2]
             models = [result[0] for result in results]
-            metric_values = [result[1][metric] for result in results]
+            metric_values = [result[2][metric] for result in results]  # Métricas de teste
             ax.bar(models, metric_values, color=metric_colors[metric])
             ax.set_title(f'Model {metric.capitalize()} Comparison')
             ax.set_xlabel('Models')
@@ -193,10 +209,6 @@ def main():
     ml_system = SparkML(data_path)
     results = ml_system.train_and_evaluate_models()
     ml_system.plot_metrics(results)
-
-if __name__ == "__main__":
-    main()
-
 
 if __name__ == "__main__":
     main()
