@@ -13,13 +13,14 @@ import numpy as np
 import pandas as pd
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType
-from pyspark.sql.functions import udf
+from pyspark.sql.functions import udf, col
 from pyspark.ml import Pipeline
 from pyspark.ml.linalg import Vectors, VectorUDT
 from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 from pyspark.ml.feature import VectorAssembler, MinMaxScaler, StringIndexer
-from pyspark.ml.classification import RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, NaiveBayes, OneVsRest
+from pyspark.ml.classification import (RandomForestClassifier, LogisticRegression, DecisionTreeClassifier, 
+                                       NaiveBayes, OneVsRest, GBTClassifier, LinearSVC, MultilayerPerceptronClassifier)
 from sklearn.metrics import confusion_matrix
 
 NUM_FEATURES = 6144
@@ -81,6 +82,10 @@ class SparkML:
         assembler = VectorAssembler(inputCols=feature_columns, outputCol="rawFeatures")
         df = assembler.transform(df)
 
+        # Remover valores extremos
+        for feature in feature_columns:
+            df = df.filter((col(feature) > -1e10) & (col(feature) < 1e10))
+
         scaler = MinMaxScaler(inputCol="rawFeatures", outputCol="features")
         df = scaler.fit(df).transform(df)
 
@@ -112,18 +117,31 @@ class SparkML:
                        .addGrid(naive_bayes.smoothing, [1.0])
                        .build())
 
-        one_vs_rest = OneVsRest(classifier=logistic_regression)
-        ovrParamGrid = (ParamGridBuilder()
-                       .addGrid(logistic_regression.regParam, [0.1, 0.01])
-                       .addGrid(logistic_regression.elasticNetParam, [0.1, 0.01])
-                       .build())
+        gbt = GBTClassifier(featuresCol='features', labelCol='label', maxIter=10)
+        ovr_gbt = OneVsRest(classifier=gbt)
+        gbtParamGrid = (ParamGridBuilder()
+                        .addGrid(gbt.maxDepth, [5])
+                        .build())
+
+        mlpc = MultilayerPerceptronClassifier(featuresCol='features', labelCol='label', maxIter=100, layers=[NUM_FEATURES, 100, 50, 12])
+        mlpcParamGrid = (ParamGridBuilder()
+                         .addGrid(mlpc.stepSize, [0.03, 0.01])
+                         .build())
+
+        linear_svc = LinearSVC(featuresCol='features', labelCol='label', maxIter=10)
+        ovr_linear_svc = OneVsRest(classifier=linear_svc)
+        svcParamGrid = (ParamGridBuilder()
+                        .addGrid(linear_svc.regParam, [0.1, 0.01])
+                        .build())
 
         return [
             ("Random Forest", random_forest, rfParamGrid),
             ("Logistic Regression", ovr_logistic_regression, lrParamGrid),
             ("Decision Tree", decision_tree, dtParamGrid),
             ("Naive Bayes", naive_bayes, nbParamGrid),
-            ("One-vs-Rest Logistic Regression", one_vs_rest, ovrParamGrid)
+            ("Gradient-Boosted Trees", ovr_gbt, gbtParamGrid),
+            ("Multilayer Perceptron Classifier", mlpc, mlpcParamGrid),
+            ("Linear SVC", ovr_linear_svc, svcParamGrid)
         ]
 
     def train_and_evaluate_models(self):
