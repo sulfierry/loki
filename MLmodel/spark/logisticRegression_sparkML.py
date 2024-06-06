@@ -201,7 +201,6 @@ def main():
     data_path = './train_data.parquet'
     ml_system = SparkML(data_path)
     results = ml_system.train_and_evaluate_model()
-    ml_system.plot_metrics(results)
 
 if __name__ == "__main__":
-    main(
+    main()
