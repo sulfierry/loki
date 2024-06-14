@@ -5,7 +5,6 @@ import pandas as pd
 import psutil
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
-from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from transformers import RobertaModel, RobertaTokenizer, AdamW, get_linear_schedule_with_warmup
 from tqdm.auto import tqdm
@@ -68,7 +67,7 @@ class ChemBERTaFineTuner:
 
     def load_data(self):
         # Carregar dados com Spark
-        df = self.spark.read.csv(self.data_path, sep='\t', header=True)
+        df = self.spark.read.parquet(self.data_path)
         df = df.select(col("canonical_smiles"), col("target"))
 
         # Converter para Pandas DataFrame para usar com PyTorch DataLoader
@@ -138,7 +137,7 @@ class ChemBERTaFineTuner:
         self.tokenizer.save_pretrained(output_dir)
 
 def main():
-    data_path = './balanced_chembl34_kinases.tsv'  # Caminho para o arquivo de dados equilibrados
+    data_path = './train_data.parquet'  # Caminho para o arquivo Parquet produzido pela classe FormatFileML
     fine_tuner = ChemBERTaFineTuner(data_path)
     fine_tuner.load_data()
     fine_tuner.train()
