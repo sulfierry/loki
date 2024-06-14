@@ -9,8 +9,7 @@ O fine-tuning é realizado para adaptar o modelo pré-treinado ChemBERTa aos dad
 ## Carregamento e Preparação dos Dados
 
 1. **Carregamento dos Dados:**
-   - Os dados são carregados a partir de um arquivo TSV (`balanced_chembl34_kinases.tsv`) usando Spark.
-   - As colunas `canonical_smiles` e `target` são selecionadas para processamento.
+   - Os dados são carregados a partir de um arquivo Parquet (`train_data.parquet`) produzido pela classe `FormatFileML` usando Spark.
 
 2. **Conversão para Pandas:**
    - Os dados carregados com Spark são convertidos para um DataFrame Pandas para facilitar o uso com PyTorch DataLoader.
@@ -32,7 +31,9 @@ O fine-tuning é realizado para adaptar o modelo pré-treinado ChemBERTa aos dad
 
 1. **Configuração:**
    - O treinamento é realizado em um dispositivo GPU se disponível, caso contrário, em CPU.
-   - Otimizador AdamW é utilizado com uma taxa de aprendizado inicial de `5e-5`.
+   -
+
+ Otimizador AdamW é utilizado com uma taxa de aprendizado inicial de `5e-5`.
    - Agendador de taxa de aprendizado linear é usado para ajustar a taxa de aprendizado durante o treinamento.
 
 2. **Treinamento:**
@@ -61,7 +62,7 @@ O fine-tuning é realizado para adaptar o modelo pré-treinado ChemBERTa aos dad
 
 1. **Carregar e preparar os dados:**
    ```python
-   df = self.spark.read.csv(self.data_path, sep='\t', header=True)
+   df = self.spark.read.parquet(self.data_path)
    df = df.select(col("canonical_smiles"), col("target"))
    df_pandas = df.toPandas()
    smiles = df_pandas['canonical_smiles'].tolist()
@@ -127,10 +128,11 @@ Este projeto está licenciado sob a [MIT License](LICENSE).
 ```plaintext
 repository/
 ├── chemberta_finetuner.py
+├── format_file_ml.py  # Script fornecido para gerar o arquivo Parquet
 ├── requirements.txt
 ├── README.md
 ├── PROCEDURE.md
 └── LICENSE  # Se você tiver um arquivo de licença
 ```
 
-Adicione este arquivo `PROCEDURE.md` ao seu repositório para fornecer uma descrição detalhada do procedimento de fine-tuning.
+Esse ajuste garante que o script de fine-tuning possa receber dados no formato Parquet produzidos pela classe `FormatFileML` e realizar o fine-tuning de maneira integrada.
