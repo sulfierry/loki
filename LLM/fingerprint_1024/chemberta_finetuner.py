@@ -10,8 +10,13 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import RobertaModel, RobertaTokenizer, AdamW, get_linear_schedule_with_warmup
 from tqdm.auto import tqdm
 
-# Definindo o dispositivo como GPU (CUDA) se disponível, senão será CPU
-device = "cuda" if torch.cuda.is_available() else "cpu"
+# Definindo o dispositivo
+if torch.backends.mps.is_available():
+    device = "mps"
+elif torch.cuda.is_available():
+    device = "cuda"
+else:
+    device = "cpu"
 
 class SMILESDataset(Dataset):
     def __init__(self, smiles_list, labels):
@@ -37,11 +42,11 @@ class ChemBERTaFineTuner:
 
         self.spark = SparkSession.builder \
             .appName("ChemBERTa Fine-Tuning with Spark") \
-            .master(f"local[{num_cores}]") \
+            .master("local[*]") \
             .config("spark.driver.memory", f"{int(total_memory * 0.8)}g") \
             .config("spark.executor.memory", f"{int(total_memory * 0.8)}g") \
-            .config("spark.executor.instances", f"{num_cores // 12}") \
-            .config("spark.executor.cores", f"{num_cores // 8}") \
+            .config("spark.executor.instances", "2") \
+            .config("spark.executor.cores", "4") \
             .config("spark.memory.fraction", "0.8") \
             .config("spark.executor.memoryOverhead", f"{int(total_memory * 0.1)}g") \
             .config("spark.memory.offHeap.enabled", "true") \
