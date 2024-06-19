@@ -12,6 +12,9 @@ from tqdm.auto import tqdm
 import torch.nn as nn
 import torch.optim as optim
 from torch.cuda.amp import GradScaler, autocast
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+
+WORKERS = 16
 
 # Definindo o dispositivo como GPU (CUDA) se disponível, senão será CPU
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -43,8 +46,8 @@ class ChemBERTaFineTuner:
             .master(f"local[{num_cores}]") \
             .config("spark.driver.memory", f"{int(total_memory * 0.8)}g") \
             .config("spark.executor.memory", f"{int(total_memory * 0.8)}g") \
-            .config("spark.executor.instances", f"{num_cores // 12}") \
-            .config("spark.executor.cores", f"{num_cores // 8}") \
+            .config("spark.executor.instances", f"{num_cores // 4}") \
+            .config("spark.executor.cores", f"{num_cores // 4}") \
             .config("spark.memory.fraction", "0.8") \
             .config("spark.executor.memoryOverhead", f"{int(total_memory * 0.1)}g") \
             .config("spark.memory.offHeap.enabled", "true") \
@@ -100,8 +103,8 @@ class ChemBERTaFineTuner:
         # Criar datasets e dataloaders
         train_dataset = SMILESDataset(smiles_train, labels_train)
         test_dataset = SMILESDataset(smiles_test, labels_test)
-        self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=4)
-        self.test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=4)
+        self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=WORKERS)
+        self.test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=WORKERS)
 
     def optimize_batch_size(self):
         # Estimar o tamanho do batch máximo possível com base na memória da GPU
@@ -134,6 +137,8 @@ class ChemBERTaFineTuner:
         total_steps = len(self.train_loader) * self.epochs
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
 
+        train_losses = []
+
         for epoch in range(self.epochs):
             epoch_loss = 0
             for batch in tqdm(self.train_loader, desc=f"Training Classifier Epoch {epoch + 1}/{self.epochs}"):
@@ -155,13 +160,20 @@ class ChemBERTaFineTuner:
 
                 epoch_loss += loss.item()
 
-            print(f"Epoch {epoch + 1} Classifier Loss: {epoch_loss / len(self.train_loader)}")
+            epoch_loss /= len(self.train_loader)
+            train_losses.append(epoch_loss)
+            print(f"Epoch {epoch + 1} Classifier Loss: {epoch_loss}")
+
+        return train_losses
 
     def evaluate(self):
         self.model.eval()
         self.classifier.eval()
         correct_predictions = 0
         total_predictions = 0
+
+        all_labels = []
+        all_predictions = []
 
         with torch.no_grad():
             for batch in tqdm(self.test_loader, desc="Evaluating"):
@@ -173,11 +185,21 @@ class ChemBERTaFineTuner:
                 predictions = self.classifier(outputs)
                 predicted_labels = torch.argmax(predictions, dim=1)
 
+                all_labels.extend(labels.cpu().numpy())
+                all_predictions.extend(predicted_labels.cpu().numpy())
+
                 correct_predictions += (predicted_labels == labels).sum().item()
                 total_predictions += labels.size(0)
 
         accuracy = correct_predictions / total_predictions
+        precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted')
+
         print(f"Test Accuracy: {accuracy * 100:.2f}%")
+        print(f"Test Precision: {precision * 100:.2f}%")
+        print(f"Test Recall: {recall * 100:.2f}%")
+        print(f"Test F1 Score: {f1 * 100:.2f}%")
+
+        return accuracy, precision, recall, f1
 
     def save_model(self, output_dir):
         if not os.path.exists(output_dir):
@@ -194,9 +216,20 @@ def main():
     fine_tuner.optimize_batch_size()
 
     fine_tuner.load_data()
-    fine_tuner.train_classifier()
-    fine_tuner.evaluate()
+    train_losses = fine_tuner.train_classifier()
+    accuracy, precision, recall, f1 = fine_tuner.evaluate()
     fine_tuner.save_model('./finetuned_chemberta')
+
+    # Salvar as métricas em um arquivo
+    metrics = {
+        "train_losses": train_losses,
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1
+    }
+    with open('metrics.json', 'w') as f:
+        json.dump(metrics, f, indent=4)
 
 if __name__ == "__main__":
     main()
