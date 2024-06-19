@@ -11,30 +11,7 @@ from transformers import RobertaModel, RobertaTokenizer, AdamW, get_linear_sched
 from tqdm.auto import tqdm
 import torch.nn as nn
 import torch.optim as optim
-
-class Autoencoder(nn.Module):
-    def __init__(self, input_dim, latent_dim):
-        super(Autoencoder, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 512),
-            nn.ReLU(True),
-            nn.Linear(512, latent_dim),
-            nn.ReLU(True)
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 512),
-            nn.ReLU(True),
-            nn.Linear(512, input_dim),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
-
-    def encode(self, x):
-        return self.encoder(x)
+from torch.cuda.amp import GradScaler, autocast
 
 # Definindo o dispositivo como GPU (CUDA) se disponível, senão será CPU
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -56,7 +33,7 @@ class SMILESDataset(Dataset):
         return tokens, label
 
 class ChemBERTaFineTuner:
-    def __init__(self, data_path, model_name='seyonec/ChemBERTa-zinc-base-v1', batch_size=32, epochs=10, learning_rate=5e-5, latent_dim=128):
+    def __init__(self, data_path, model_name='seyonec/ChemBERTa-zinc-base-v1', batch_size=32, epochs=10, learning_rate=2e-5):
         # Detectar os recursos da máquina
         num_cores = psutil.cpu_count(logical=True)
         total_memory = psutil.virtual_memory().total // (1024 ** 3)  # Convertendo para GB
@@ -85,15 +62,27 @@ class ChemBERTaFineTuner:
         self.batch_size = batch_size
         self.epochs = epochs
         self.learning_rate = learning_rate
-        self.latent_dim = latent_dim
         self.device = device
+        self.scaler = GradScaler()
 
         # Carregar modelo e tokenizer
         self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
         self.model = RobertaModel.from_pretrained(model_name)
-        self.autoencoder = Autoencoder(768, latent_dim)  # Tamanho da camada de saída do Roberta é 768
+
+        # Número de classes (ajustar conforme necessário)
+        self.num_classes = self._get_num_classes()
+
+        # Definir classificador com o número correto de classes
+        self.classifier = nn.Linear(768, self.num_classes)
         self.model.to(self.device)
-        self.autoencoder.to(self.device)
+        self.classifier.to(self.device)
+
+    def _get_num_classes(self):
+        # Carregar dados para determinar o número de classes
+        df = self.spark.read.parquet(self.data_path)
+        df = df.select(col("target"))
+        df_pandas = df.toPandas()
+        return df_pandas['target'].nunique()
 
     def load_data(self):
         # Carregar dados com Spark
@@ -111,84 +100,80 @@ class ChemBERTaFineTuner:
         # Criar datasets e dataloaders
         train_dataset = SMILESDataset(smiles_train, labels_train)
         test_dataset = SMILESDataset(smiles_test, labels_test)
-        self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
-        self.test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
+        self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=4)
+        self.test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=4)
 
-    def train_autoencoder(self):
-        self.autoencoder.train()
-        optimizer = optim.Adam(self.autoencoder.parameters(), lr=self.learning_rate)
-        criterion = nn.MSELoss()
-
-        for epoch in range(self.epochs):
-            epoch_loss = 0
-            for batch in tqdm(self.train_loader, desc=f"Training Autoencoder Epoch {epoch + 1}/{self.epochs}"):
-                tokens, _ = batch
-                tokens = {key: val.to(self.device) for key, val in tokens.items()}
-
-                with torch.no_grad():
-                    embeddings = self.model(**tokens).last_hidden_state.mean(dim=1)
-
-                outputs = self.autoencoder(embeddings)
-                loss = criterion(outputs, embeddings)
-
-                optimizer.zero_grad()
+    def optimize_batch_size(self):
+        # Estimar o tamanho do batch máximo possível com base na memória da GPU
+        # Isso pode variar dependendo do tamanho do modelo e dos dados
+        batch_size = self.batch_size
+        try:
+            while True:
+                dummy_input = {key: torch.ones(batch_size, 512, dtype=torch.long).to(self.device) for key in ["input_ids", "attention_mask"]}
+                dummy_target = torch.randint(0, self.num_classes, (batch_size,)).to(self.device)
+                with autocast():
+                    outputs = self.model(**dummy_input).last_hidden_state.mean(dim=1)
+                    loss = nn.CrossEntropyLoss()(self.classifier(outputs), dummy_target)
                 loss.backward()
-                optimizer.step()
-                epoch_loss += loss.item()
-
-            print(f"Epoch {epoch + 1} Autoencoder Loss: {epoch_loss / len(self.train_loader)}")
+                batch_size *= 2
+        except RuntimeError as e:
+            if "CUDA out of memory" in str(e):
+                batch_size //= 2
+                print(f"Optimal batch size determined: {batch_size}")
+                self.batch_size = batch_size
+            else:
+                raise e
 
     def train_classifier(self):
-        self.model.eval()
-        self.autoencoder.eval()
-        classifier = nn.Linear(self.latent_dim, len(set(self.train_loader.dataset.labels)))
-        classifier.to(self.device)
-        optimizer = optim.Adam(classifier.parameters(), lr=self.learning_rate)
+        self.model.train()
+        self.classifier.train()
+        optimizer = AdamW(list(self.model.parameters()) + list(self.classifier.parameters()), lr=self.learning_rate)
         criterion = nn.CrossEntropyLoss()
+
+        # Scheduler para decaimento da taxa de aprendizado
+        total_steps = len(self.train_loader) * self.epochs
+        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
 
         for epoch in range(self.epochs):
             epoch_loss = 0
-            classifier.train()
             for batch in tqdm(self.train_loader, desc=f"Training Classifier Epoch {epoch + 1}/{self.epochs}"):
                 tokens, labels = batch
                 tokens = {key: val.to(self.device) for key, val in tokens.items()}
                 labels = labels.to(self.device)
 
-                with torch.no_grad():
-                    embeddings = self.model(**tokens).last_hidden_state.mean(dim=1)
-                    latent_vectors = self.autoencoder.encode(embeddings)
-
-                outputs = classifier(latent_vectors)
-                loss = criterion(outputs, labels)
-
                 optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+
+                with autocast():
+                    outputs = self.model(**tokens).last_hidden_state.mean(dim=1)
+                    predictions = self.classifier(outputs)
+                    loss = criterion(predictions, labels)
+
+                self.scaler.scale(loss).backward()
+                self.scaler.step(optimizer)
+                self.scaler.update()
+                scheduler.step()
+
                 epoch_loss += loss.item()
 
             print(f"Epoch {epoch + 1} Classifier Loss: {epoch_loss / len(self.train_loader)}")
 
     def evaluate(self):
         self.model.eval()
-        self.autoencoder.eval()
-        classifier = nn.Linear(self.latent_dim, len(set(self.train_loader.dataset.labels)))
-        classifier.to(self.device)
+        self.classifier.eval()
         correct_predictions = 0
         total_predictions = 0
 
-        classifier.eval()
         with torch.no_grad():
             for batch in tqdm(self.test_loader, desc="Evaluating"):
                 tokens, labels = batch
                 tokens = {key: val.to(self.device) for key, val in tokens.items()}
                 labels = labels.to(self.device)
 
-                embeddings = self.model(**tokens).last_hidden_state.mean(dim=1)
-                latent_vectors = self.autoencoder.encode(embeddings)
-                outputs = classifier(latent_vectors)
-                predictions = torch.argmax(outputs, dim=1)
+                outputs = self.model(**tokens).last_hidden_state.mean(dim=1)
+                predictions = self.classifier(outputs)
+                predicted_labels = torch.argmax(predictions, dim=1)
 
-                correct_predictions += (predictions == labels).sum().item()
+                correct_predictions += (predicted_labels == labels).sum().item()
                 total_predictions += labels.size(0)
 
         accuracy = correct_predictions / total_predictions
@@ -199,13 +184,16 @@ class ChemBERTaFineTuner:
             os.makedirs(output_dir)
         self.model.save_pretrained(output_dir)
         self.tokenizer.save_pretrained(output_dir)
-        torch.save(self.autoencoder.state_dict(), os.path.join(output_dir, "autoencoder.pt"))
+        torch.save(self.classifier.state_dict(), os.path.join(output_dir, "classifier.pt"))
 
 def main():
     data_path = './train_data.parquet'  # Caminho para o arquivo Parquet produzido pela classe FormatFileML
     fine_tuner = ChemBERTaFineTuner(data_path)
+
+    # Otimizar o tamanho do batch se a memória da GPU permitir
+    fine_tuner.optimize_batch_size()
+
     fine_tuner.load_data()
-    fine_tuner.train_autoencoder()
     fine_tuner.train_classifier()
     fine_tuner.evaluate()
     fine_tuner.save_model('./finetuned_chemberta')
