@@ -12,12 +12,6 @@ from tqdm.auto import tqdm
 import torch.nn as nn
 import torch.optim as optim
 
-
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-
 class Autoencoder(nn.Module):
     def __init__(self, input_dim, latent_dim):
         super(Autoencoder, self).__init__()
@@ -41,7 +35,6 @@ class Autoencoder(nn.Module):
 
     def encode(self, x):
         return self.encoder(x)
-
 
 # Definindo o dispositivo como GPU (CUDA) se disponível, senão será CPU
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -61,30 +54,6 @@ class SMILESDataset(Dataset):
         tokens = self.tokenizer(smiles, return_tensors='pt', padding='max_length', truncation=True, max_length=512)
         tokens = {key: val.squeeze(0) for key, val in tokens.items()}
         return tokens, label
-
-class Autoencoder(nn.Module):
-    def __init__(self, input_dim, latent_dim):
-        super(Autoencoder, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 512),
-            nn.ReLU(True),
-            nn.Linear(512, latent_dim),
-            nn.ReLU(True)
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 512),
-            nn.ReLU(True),
-            nn.Linear(512, input_dim),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
-
-    def encode(self, x):
-        return self.encoder(x)
 
 class ChemBERTaFineTuner:
     def __init__(self, data_path, model_name='seyonec/ChemBERTa-zinc-base-v1', batch_size=32, epochs=10, learning_rate=5e-5, latent_dim=128):
