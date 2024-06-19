@@ -6,6 +6,9 @@ import os
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+INPUT_FILE = './filtered_dataset.tsv'
+BATCH_SIZE = 249856
+
 class FormatFileML:
     def __init__(self, filepath):
         self.filepath = filepath
@@ -47,7 +50,7 @@ class FormatFileML:
 
 def main():
     # Initialize formatter with the path to the dataset
-    formatter = FormatFileML('./filtered_dataset.tsv')
+    formatter = FormatFileML(INPUT_FILE)
 
     # Load data
     data = formatter.load_data()
