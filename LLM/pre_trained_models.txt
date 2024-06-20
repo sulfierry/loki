@@ -1,0 +1,11 @@
+DeepChem/ChemBERTa-10M-MTR
+DeepChem/ChemBERTa-10M-MLM
+DeepChem/ChemBERTa-77M-MTR
+DeepChem/SmilesTokenizer_PubChem_1M
+DeepChem/ChemBERTa-77M-MLM
+DeepChem/ChemBERTa-5M-MLM
+DeepChem/ChemBERTa-5M-MTR
+seyonec/ChemBERTa-zinc-base-v1
+seyonec/ChemBERTa_zinc250k_v2_40k
+seyonec/PubChem10M_SMILES_BPE_450k
+seyonec/PubChem10M_SMILES_BPE_60k
