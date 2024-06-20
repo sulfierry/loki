@@ -7,15 +7,17 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
-from transformers import RobertaModel, RobertaTokenizer, AdamW, get_linear_schedule_with_warmup
+from transformers import RobertaModel, RobertaTokenizer, get_linear_schedule_with_warmup
 from tqdm.auto import tqdm
 import torch.nn as nn
 import torch.optim as optim
 from torch.cuda.amp import GradScaler, autocast
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+import optuna
+from optuna.trial import TrialState
+import json
+from sklearn.metrics import precision_recall_fscore_support
 
 WORKERS = 16
-
 # Definindo o dispositivo como GPU (CUDA) se disponível, senão será CPU
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -108,7 +110,6 @@ class ChemBERTaFineTuner:
 
     def optimize_batch_size(self):
         # Estimar o tamanho do batch máximo possível com base na memória da GPU
-        # Isso pode variar dependendo do tamanho do modelo e dos dados
         batch_size = self.batch_size
         try:
             while True:
@@ -130,7 +131,7 @@ class ChemBERTaFineTuner:
     def train_classifier(self):
         self.model.train()
         self.classifier.train()
-        optimizer = AdamW(list(self.model.parameters()) + list(self.classifier.parameters()), lr=self.learning_rate)
+        optimizer = optim.AdamW(list(self.model.parameters()) + list(self.classifier.parameters()), lr=self.learning_rate)
         criterion = nn.CrossEntropyLoss()
 
         # Scheduler para decaimento da taxa de aprendizado
@@ -208,12 +209,32 @@ class ChemBERTaFineTuner:
         self.tokenizer.save_pretrained(output_dir)
         torch.save(self.classifier.state_dict(), os.path.join(output_dir, "classifier.pt"))
 
-def main():
+def objective(trial):
     data_path = './train_data.parquet'  # Caminho para o arquivo Parquet produzido pela classe FormatFileML
-    fine_tuner = ChemBERTaFineTuner(data_path)
 
-    # Otimizar o tamanho do batch se a memória da GPU permitir
-    fine_tuner.optimize_batch_size()
+    # Sugerir hiperparâmetros
+    learning_rate = trial.suggest_float('learning_rate', 1e-6, 1e-4, log=True)
+    batch_size = trial.suggest_int('batch_size', 16, 64)
+    epochs = trial.suggest_int('epochs', 5, 15)
+
+    fine_tuner = ChemBERTaFineTuner(data_path, batch_size=batch_size, epochs=epochs, learning_rate=learning_rate)
+
+    fine_tuner.load_data()
+    train_losses = fine_tuner.train_classifier()
+    accuracy, precision, recall, f1 = fine_tuner.evaluate()
+
+    return accuracy
+
+def main():
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=20)
+
+    print(f"Best trial: {study.best_trial.value}")
+    print(f"Best parameters: {study.best_trial.params}")
+
+    # Treinar o modelo com os melhores hiperparâmetros
+    best_params = study.best_trial.params
+    fine_tuner = ChemBERTaFineTuner('./train_data.parquet', **best_params)
 
     fine_tuner.load_data()
     train_losses = fine_tuner.train_classifier()
