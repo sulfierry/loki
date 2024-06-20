@@ -6,3 +6,5 @@ tqdm
 scikit-learn
 pyspark
 psutil
+pyarrow
+optuna
