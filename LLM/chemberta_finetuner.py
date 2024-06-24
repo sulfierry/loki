@@ -17,7 +17,7 @@ import optuna
 import json
 from sklearn.metrics import precision_recall_fscore_support
 
-WORKERS = 16
+WORKERS = os.cpu_count()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class SMILESDataset(Dataset):
@@ -116,6 +116,7 @@ class ChemBERTaFineTuner:
         epoch_metrics = []
 
         for epoch in range(self.epochs):
+            start_time = time.time()
             epoch_loss = 0
             correct_predictions = 0
             total_predictions = 0
@@ -148,6 +149,7 @@ class ChemBERTaFineTuner:
                 correct_predictions += (predicted_labels == labels).sum().item()
                 total_predictions += labels.size(0)
 
+            epoch_duration = time.time() - start_time
             epoch_loss /= len(self.train_loader)
             accuracy = correct_predictions / total_predictions
             precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted')
@@ -166,7 +168,8 @@ class ChemBERTaFineTuner:
                 "test_accuracy": test_accuracy,
                 "test_precision": test_precision,
                 "test_recall": test_recall,
-                "test_f1": test_f1
+                "test_f1": test_f1,
+                "epoch_duration": epoch_duration
             })
 
             print(f"Epoch {epoch + 1} Train Loss: {epoch_loss}")
@@ -179,6 +182,7 @@ class ChemBERTaFineTuner:
             print(f"Epoch {epoch + 1} Test Precision: {test_precision * 100:.2f}%")
             print(f"Epoch {epoch + 1} Test Recall: {test_recall * 100:.2f}%")
             print(f"Epoch {epoch + 1} Test F1 Score: {test_f1 * 100:.2f}%")
+            print(f"Epoch {epoch + 1} Duration: {epoch_duration:.2f} seconds")
 
         return epoch_metrics
 
