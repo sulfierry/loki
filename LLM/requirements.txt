@@ -8,3 +8,4 @@ pyspark
 psutil
 pyarrow
 optuna
+pandas
