@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import numpy as np
 import pandas as pd
@@ -13,7 +14,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.cuda.amp import GradScaler, autocast
 import optuna
-from optuna.trial import TrialState
 import json
 from sklearn.metrics import precision_recall_fscore_support
 
@@ -68,12 +68,18 @@ class ChemBERTaFineTuner:
         self.device = DEVICE
         self.scaler = GradScaler()
 
+        # Carregar modelo e tokenizer
         self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
-        self.model = RobertaModel.from_pretrained(model_name)
+        self.model = RobertaModel.from_pretrained(model_name, ignore_mismatched_sizes=True)
 
+        # Obter a dimensão correta da saída do modelo Roberta
+        self.hidden_size = self.model.config.hidden_size
+
+        # Número de classes (ajustar conforme necessário)
         self.num_classes = self._get_num_classes()
 
-        self.classifier = nn.Linear(768, self.num_classes)
+        # Definir classificador com o número correto de classes
+        self.classifier = nn.Linear(self.hidden_size, self.num_classes)
         self.model.to(self.device)
         self.classifier.to(self.device)
 
@@ -107,10 +113,16 @@ class ChemBERTaFineTuner:
         total_steps = len(self.train_loader) * self.epochs
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
 
-        train_losses = []
+        epoch_metrics = []
 
         for epoch in range(self.epochs):
             epoch_loss = 0
+            correct_predictions = 0
+            total_predictions = 0
+
+            all_labels = []
+            all_predictions = []
+
             for batch in tqdm(self.train_loader, desc=f"Training Classifier Epoch {epoch + 1}/{self.epochs}"):
                 tokens, labels = batch
                 tokens = {key: val.to(self.device) for key, val in tokens.items()}
@@ -130,11 +142,82 @@ class ChemBERTaFineTuner:
 
                 epoch_loss += loss.item()
 
-            epoch_loss /= len(self.train_loader)
-            train_losses.append(epoch_loss)
-            print(f"Epoch {epoch + 1} Classifier Loss: {epoch_loss}")
+                predicted_labels = torch.argmax(predictions, dim=1)
+                all_labels.extend(labels.cpu().numpy())
+                all_predictions.extend(predicted_labels.cpu().numpy())
+                correct_predictions += (predicted_labels == labels).sum().item()
+                total_predictions += labels.size(0)
 
-        return train_losses
+            epoch_loss /= len(self.train_loader)
+            accuracy = correct_predictions / total_predictions
+            precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted')
+
+            # Avaliação no conjunto de teste após cada epoch
+            test_loss, test_accuracy, test_precision, test_recall, test_f1 = self.evaluate_per_epoch()
+
+            epoch_metrics.append({
+                "epoch": epoch + 1,
+                "train_loss": epoch_loss,
+                "train_accuracy": accuracy,
+                "train_precision": precision,
+                "train_recall": recall,
+                "train_f1": f1,
+                "test_loss": test_loss,
+                "test_accuracy": test_accuracy,
+                "test_precision": test_precision,
+                "test_recall": test_recall,
+                "test_f1": test_f1
+            })
+
+            print(f"Epoch {epoch + 1} Train Loss: {epoch_loss}")
+            print(f"Epoch {epoch + 1} Train Accuracy: {accuracy * 100:.2f}%")
+            print(f"Epoch {epoch + 1} Train Precision: {precision * 100:.2f}%")
+            print(f"Epoch {epoch + 1} Train Recall: {recall * 100:.2f}%")
+            print(f"Epoch {epoch + 1} Train F1 Score: {f1 * 100:.2f}%")
+            print(f"Epoch {epoch + 1} Test Loss: {test_loss:.4f}")
+            print(f"Epoch {epoch + 1} Test Accuracy: {test_accuracy * 100:.2f}%")
+            print(f"Epoch {epoch + 1} Test Precision: {test_precision * 100:.2f}%")
+            print(f"Epoch {epoch + 1} Test Recall: {test_recall * 100:.2f}%")
+            print(f"Epoch {epoch + 1} Test F1 Score: {test_f1 * 100:.2f}%")
+
+        return epoch_metrics
+
+    def evaluate_per_epoch(self):
+        self.model.eval()
+        self.classifier.eval()
+        correct_predictions = 0
+        total_predictions = 0
+
+        all_labels = []
+        all_predictions = []
+        test_losses = []
+
+        criterion = nn.CrossEntropyLoss()
+
+        with torch.no_grad():
+            for batch in self.test_loader:
+                tokens, labels = batch
+                tokens = {key: val.to(self.device) for key, val in tokens.items()}
+                labels = labels.to(self.device)
+
+                outputs = self.model(**tokens).last_hidden_state.mean(dim=1)
+                predictions = self.classifier(outputs)
+                predicted_labels = torch.argmax(predictions, dim=1)
+
+                loss = criterion(predictions, labels)
+                test_losses.append(loss.item())
+
+                all_labels.extend(labels.cpu().numpy())
+                all_predictions.extend(predicted_labels.cpu().numpy())
+
+                correct_predictions += (predicted_labels == labels).sum().item()
+                total_predictions += labels.size(0)
+
+        test_loss = np.mean(test_losses)
+        test_accuracy = correct_predictions / total_predictions
+        test_precision, test_recall, test_f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted')
+
+        return test_loss, test_accuracy, test_precision, test_recall, test_f1
 
     def evaluate(self):
         self.model.eval()
@@ -200,18 +283,26 @@ def objective(trial, model_name, data_path):
     fine_tuner = ChemBERTaFineTuner(data_path, model_name=model_name, batch_size=batch_size, epochs=epochs, learning_rate=learning_rate)
 
     fine_tuner.load_data()
-    train_losses = fine_tuner.train_classifier()
+    epoch_metrics = fine_tuner.train_classifier()
     accuracy, precision, recall, f1, test_loss = fine_tuner.evaluate()
 
     return accuracy
 
 def main():
-    models = read_models('models_pre_trained.txt')
+    start_time = time.time()
+    models = read_models('pre_trained_models.txt')
     data_path = './train_data.parquet'
     results = {}
 
     for model in models:
+        # Verificar se o modelo já foi treinado
+        model_output_dir = f'./finetuned_{model.replace("/", "_")}'
+        if os.path.exists(model_output_dir):
+            print(f"Model {model} already trained. Skipping...")
+            continue
+
         print(f"Training with model: {model}")
+        model_start_time = time.time()
         study = optuna.create_study(direction='maximize')
         study.optimize(lambda trial: objective(trial, model, data_path), n_trials=20)
 
@@ -219,18 +310,23 @@ def main():
         fine_tuner = ChemBERTaFineTuner(data_path, model_name=model, **best_params)
 
         fine_tuner.load_data()
-        train_losses = fine_tuner.train_classifier()
+        epoch_metrics = fine_tuner.train_classifier()
         accuracy, precision, recall, f1, test_loss = fine_tuner.evaluate()
-        fine_tuner.save_model(f'./finetuned_{model.replace("/", "_")}')
+        fine_tuner.save_model(model_output_dir)
+
+        model_end_time = time.time()
+        model_duration = model_end_time - model_start_time
+        print(f"Time taken to train model {model}: {model_duration:.2f} seconds")
 
         metrics = {
-            "train_losses": train_losses,
+            "epoch_metrics": epoch_metrics,
             "test_loss": test_loss,
             "accuracy": accuracy,
             "precision": precision,
             "recall": recall,
             "f1": f1,
-            "best_params": best_params
+            "best_params": best_params,
+            "training_time": model_duration
         }
 
         results[model] = metrics
@@ -241,6 +337,10 @@ def main():
     # Compare all models and save the results
     with open('all_results.json', 'w') as f:
         json.dump(results, f, indent=4)
+
+    end_time = time.time()
+    total_duration = end_time - start_time
+    print(f"Total time taken to run the script: {total_duration:.2f} seconds")
 
 if __name__ == "__main__":
     main()
