@@ -320,35 +320,38 @@ def objective(trial, model_name, data_path):
 
 # Função principal
 def main():
-    start_time = time.time()
-    models = read_models('pre_trained_models.txt')
-    data_path = './train_data.parquet'
-    results = {}
+    start_time = time.time()  # Marca o início do tempo de execução do script
+    models = read_models('pre_trained_models.txt')  # Lê a lista de modelos pré-treinados a partir de um arquivo
+    data_path = './train_data.parquet'  # Caminho para o arquivo de dados de treinamento
+    results = {}  # Dicionário para armazenar os resultados de cada modelo
 
     for model in models:
-        # Verificar se o modelo já foi treinado
+        # Verifica se o modelo já foi treinado anteriormente
         model_output_dir = f'./finetuned_{model.replace("/", "_")}'
         if os.path.exists(model_output_dir):
-            print(f"Model {model} already trained. Skipping...")
+            print(f"Model {model} already trained. Skipping...")  # Se o modelo já foi treinado, pula para o próximo
             continue
 
-        print(f"Training with model: {model}")
-        model_start_time = time.time()
+        print(f"Training with model: {model}")  # Informa qual modelo está sendo treinado
+        model_start_time = time.time()  # Marca o início do tempo de treinamento para este modelo
+
+        # Cria um estudo Optuna para otimização dos hiperparâmetros, buscando maximizar a acurácia
         study = optuna.create_study(direction='maximize')
-        study.optimize(lambda trial: objective(trial, model, data_path), n_trials=20)
+        study.optimize(lambda trial: objective(trial, model, data_path), n_trials=20)  # Executa 20 trials para otimização
 
-        best_params = study.best_trial.params
-        fine_tuner = ChemBERTaFineTuner(data_path, model_name=model, **best_params)
+        best_params = study.best_trial.params  # Obtém os melhores hiperparâmetros encontrados pelo Optuna
+        fine_tuner = ChemBERTaFineTuner(data_path, model_name=model, **best_params)  # Inicializa o fine-tuner com os melhores parâmetros
 
-        fine_tuner.load_data()
-        epoch_metrics = fine_tuner.train_classifier()
-        accuracy, precision, recall, f1, test_loss = fine_tuner.evaluate()
-        fine_tuner.save_model(model_output_dir)
+        fine_tuner.load_data()  # Carrega os dados de treinamento e teste
+        epoch_metrics = fine_tuner.train_classifier()  # Treina o classificador e obtém as métricas por época
+        accuracy, precision, recall, f1, test_loss = fine_tuner.evaluate()  # Avalia o desempenho do modelo no conjunto de teste
+        fine_tuner.save_model(model_output_dir)  # Salva o modelo treinado e o tokenizador
 
-        model_end_time = time.time()
-        model_duration = model_end_time - model_start_time
-        print(f"Time taken to train model {model}: {model_duration:.2f} seconds")
+        model_end_time = time.time()  # Marca o fim do tempo de treinamento para este modelo
+        model_duration = model_end_time - model_start_time  # Calcula a duração do treinamento
+        print(f"Time taken to train model {model}: {model_duration:.2f} seconds")  # Informa o tempo de treinamento
 
+        # Armazena as métricas e informações do treinamento no dicionário de resultados
         metrics = {
             "epoch_metrics": epoch_metrics,
             "test_loss": test_loss,
@@ -359,19 +362,20 @@ def main():
             "best_params": best_params,
             "training_time": model_duration
         }
-
         results[model] = metrics
 
+        # Salva as métricas individuais do modelo em um arquivo JSON
         with open(f'metrics_{model.replace("/", "_")}.json', 'w') as f:
             json.dump(metrics, f, indent=4)
 
-    # Compare all models and save the results
+    # Gera e salva um relatório consolidado com os resultados de todos os modelos
     with open('all_results.json', 'w') as f:
         json.dump(results, f, indent=4)
 
-    end_time = time.time()
-    total_duration = end_time - start_time
-    print(f"Total time taken to run the script: {total_duration:.2f} seconds")
+    end_time = time.time()  # Marca o fim do tempo de execução do script
+    total_duration = end_time - start_time  # Calcula a duração total do script
+    print(f"Total time taken to run the script: {total_duration:.2f} seconds")  # Informa o tempo total de execução
+
 
 if __name__ == "__main__":
     main()
