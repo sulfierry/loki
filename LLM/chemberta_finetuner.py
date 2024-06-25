@@ -17,10 +17,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_fscore_support
 from transformers import RobertaModel, RobertaTokenizer, get_linear_schedule_with_warmup
 
-
+# Define o número de trabalhadores e o dispositivo de computação (CPU ou GPU)
 WORKERS = os.cpu_count()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+# Classe personalizada para dataset de SMILES
 class SMILESDataset(Dataset):
     def __init__(self, smiles_list, labels, model_name):
         self.smiles_list = smiles_list
@@ -37,11 +38,13 @@ class SMILESDataset(Dataset):
         tokens = {key: val.squeeze(0) for key, val in tokens.items()}
         return tokens, label
 
+# Classe para realizar o fine-tuning do modelo ChemBERTa
 class ChemBERTaFineTuner:
     def __init__(self, data_path, model_name, batch_size=32, epochs=10, learning_rate=2e-5):
         num_cores = psutil.cpu_count(logical=True)
         total_memory = psutil.virtual_memory().total // (1024 ** 3)  # Convertendo para GB
 
+        # Configuração da sessão Spark
         self.spark = SparkSession.builder \
             .appName("ChemBERTa Fine-Tuning with Spark") \
             .master(f"local[{num_cores}]") \
@@ -84,12 +87,14 @@ class ChemBERTaFineTuner:
         self.model.to(self.device)
         self.classifier.to(self.device)
 
+    # Método para obter o número de classes
     def _get_num_classes(self):
         df = self.spark.read.parquet(self.data_path)
         df = df.select(col("target"))
         df_pandas = df.toPandas()
         return df_pandas['target'].nunique()
 
+    # Método para carregar e preparar os dados
     def load_data(self):
         df = self.spark.read.parquet(self.data_path)
         df = df.select(col("canonical_smiles"), col("target"))
@@ -105,6 +110,7 @@ class ChemBERTaFineTuner:
         self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=WORKERS)
         self.test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=WORKERS)
 
+    # Método para treinamento do modelo
     def train_classifier(self):
         self.model.train()
         self.classifier.train()
@@ -187,6 +193,7 @@ class ChemBERTaFineTuner:
 
         return epoch_metrics
 
+    # Método para avaliação por época
     def evaluate_per_epoch(self):
         self.model.eval()
         self.classifier.eval()
@@ -224,6 +231,7 @@ class ChemBERTaFineTuner:
 
         return test_loss, test_accuracy, test_precision, test_recall, test_f1
 
+    # Método para avaliação final do modelo
     def evaluate(self):
         self.model.eval()
         self.classifier.eval()
@@ -268,6 +276,7 @@ class ChemBERTaFineTuner:
 
         return accuracy, precision, recall, f1, test_loss
 
+    # Método para salvar o modelo treinado
     def save_model(self, output_dir):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -275,11 +284,13 @@ class ChemBERTaFineTuner:
         self.tokenizer.save_pretrained(output_dir)
         torch.save(self.classifier.state_dict(), os.path.join(output_dir, "classifier.pt"))
 
+# Função para ler a lista de modelos a partir de um arquivo
 def read_models(file_path):
     with open(file_path, 'r') as f:
         models = f.read().splitlines()
     return models
 
+# Função de objetivo para o Optuna
 def objective(trial, model_name, data_path):
     learning_rate = trial.suggest_float('learning_rate', 1e-6, 1e-4, log=True)
     batch_size = trial.suggest_int('batch_size', 16, 64)
@@ -293,6 +304,7 @@ def objective(trial, model_name, data_path):
 
     return accuracy
 
+# Função principal
 def main():
     start_time = time.time()
     models = read_models('pre_trained_models.txt')
