@@ -207,41 +207,41 @@ class ChemBERTaFineTuner:
 
     # Método para avaliação por época
     def evaluate_per_epoch(self):
-        self.model.eval()
-        self.classifier.eval()
-        correct_predictions = 0
-        total_predictions = 0
-
-        all_labels = []
-        all_predictions = []
-        test_losses = []
-
-        criterion = nn.CrossEntropyLoss()
-
-        with torch.no_grad():
-            for batch in self.test_loader:
-                tokens, labels = batch
-                tokens = {key: val.to(self.device) for key, val in tokens.items()}
-                labels = labels.to(self.device)
-
-                outputs = self.model(**tokens).last_hidden_state.mean(dim=1)
-                predictions = self.classifier(outputs)
-                predicted_labels = torch.argmax(predictions, dim=1)
-
-                loss = criterion(predictions, labels)
-                test_losses.append(loss.item())
-
-                all_labels.extend(labels.cpu().numpy())
-                all_predictions.extend(predicted_labels.cpu().numpy())
-
-                correct_predictions += (predicted_labels == labels).sum().item()
-                total_predictions += labels.size(0)
-
-        test_loss = np.mean(test_losses)
-        test_accuracy = correct_predictions / total_predictions
-        test_precision, test_recall, test_f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted')
-
-        return test_loss, test_accuracy, test_precision, test_recall, test_f1
+        self.model.eval()  # Coloca o modelo em modo de avaliação
+        self.classifier.eval()  # Coloca o classificador em modo de avaliação
+        correct_predictions = 0  # Inicializa a contagem de predições corretas
+        total_predictions = 0  # Inicializa a contagem total de predições
+    
+        all_labels = []  # Lista para armazenar todos os rótulos reais
+        all_predictions = []  # Lista para armazenar todas as predições do modelo
+        test_losses = []  # Lista para armazenar as perdas do conjunto de teste
+    
+        criterion = nn.CrossEntropyLoss()  # Define o critério de perda como CrossEntropyLoss
+    
+        with torch.no_grad():  # Desativa o cálculo de gradientes, pois estamos em modo de avaliação
+            for batch in self.test_loader:  # Itera sobre cada mini-batch do conjunto de teste
+                tokens, labels = batch  # Extrai os tokens e rótulos do mini-batch
+                tokens = {key: val.to(self.device) for key, val in tokens.items()}  # Move os tokens para o dispositivo (CPU/GPU)
+                labels = labels.to(self.device)  # Move os rótulos para o dispositivo
+    
+                outputs = self.model(**tokens).last_hidden_state.mean(dim=1)  # Passa os tokens pelo modelo Roberta
+                predictions = self.classifier(outputs)  # Passa a saída do Roberta pelo classificador
+                predicted_labels = torch.argmax(predictions, dim=1)  # Obtém as predições do modelo
+    
+                loss = criterion(predictions, labels)  # Calcula a perda entre as predições e os rótulos
+                test_losses.append(loss.item())  # Armazena a perda do mini-batch
+    
+                all_labels.extend(labels.cpu().numpy())  # Armazena os rótulos reais
+                all_predictions.extend(predicted_labels.cpu().numpy())  # Armazena as predições do modelo
+    
+                correct_predictions += (predicted_labels == labels).sum().item()  # Conta as predições corretas
+                total_predictions += labels.size(0)  # Conta o total de predições
+    
+        test_loss = np.mean(test_losses)  # Calcula a perda média no conjunto de teste
+        test_accuracy = correct_predictions / total_predictions  # Calcula a acurácia no conjunto de teste
+        test_precision, test_recall, test_f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted')  # Calcula precisão, recall e F1-score
+    
+        return test_loss, test_accuracy, test_precision, test_recall, test_f1  # Retorna as métricas calculadas
 
     # Método para avaliação final do modelo
     def evaluate(self):
