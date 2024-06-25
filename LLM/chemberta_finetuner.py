@@ -17,7 +17,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_fscore_support
 from transformers import RobertaModel, RobertaTokenizer, get_linear_schedule_with_warmup
 
-# Define o número de trabalhadores e o dispositivo de computação (CPU ou GPU)
+# Define o número de CPU's e o dispositivo de computação (CPU ou GPU)
 WORKERS = os.cpu_count()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
