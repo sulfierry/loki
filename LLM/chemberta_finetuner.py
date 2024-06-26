@@ -13,12 +13,11 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import Dataset, DataLoader
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import precision_recall_fscore_support
+from sklearn.model_selection import train_test_split, KFold
+from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.metrics import precision_recall_fscore_support, accuracy_score, multilabel_confusion_matrix
 from transformers import RobertaModel, RobertaTokenizer, get_linear_schedule_with_warmup
-
 from imblearn.over_sampling import RandomOverSampler
-
 
 # Define o número de CPU's e o dispositivo de computação (CPU ou GPU)
 WORKERS = os.cpu_count()
@@ -39,7 +38,7 @@ class SMILESDataset(Dataset):
         label = self.labels[idx]
         tokens = self.tokenizer(smiles, return_tensors='pt', padding='max_length', truncation=True, max_length=512)
         tokens = {key: val.squeeze(0) for key, val in tokens.items()}
-        return tokens, label
+        return tokens, torch.tensor(label, dtype=torch.float)
 
 # Classe para realizar o fine-tuning do modelo ChemBERTa
 class ChemBERTaFineTuner:
@@ -95,7 +94,9 @@ class ChemBERTaFineTuner:
         df = self.spark.read.parquet(self.data_path)
         df = df.select(col("target"))
         df_pandas = df.toPandas()
-        return df_pandas['target'].nunique()
+        mlb = MultiLabelBinarizer()
+        mlb.fit([target.split(',') for target in df_pandas['target']])
+        return len(mlb.classes_)
 
     # Método para carregar e preparar os dados
     def load_data(self):
@@ -104,16 +105,25 @@ class ChemBERTaFineTuner:
 
         df_pandas = df.toPandas()
         smiles = df_pandas['canonical_smiles'].tolist()
-        labels = df_pandas['target'].astype('category').cat.codes.tolist()
+        targets = df_pandas['target'].apply(lambda x: x.split(',')).tolist()
 
+        mlb = MultiLabelBinarizer()
+        labels = mlb.fit_transform(targets)
+
+        self.class_labels = mlb.classes_
+
+        # Divisão dos dados em treino e teste
         smiles_train, smiles_test, labels_train, labels_test = train_test_split(smiles, labels, test_size=0.2, random_state=42)
 
-        train_dataset = SMILESDataset(smiles_train, labels_train, self.model_name)
+        self.smiles_train = smiles_train
+        self.labels_train = labels_train
+        self.smiles_test = smiles_test
+        self.labels_test = labels_test
+
         test_dataset = SMILESDataset(smiles_test, labels_test, self.model_name)
-        self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=WORKERS)
         self.test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=WORKERS)
 
-    # Método para treinamento do modelo
+    # Método para treinamento do modelo com validação k-fold
     def train_classifier(self):
         kf = KFold(n_splits=5, shuffle=True, random_state=42)
     
@@ -177,6 +187,7 @@ class ChemBERTaFineTuner:
     
                 # Avaliação no conjunto de validação após cada época
                 val_loss, val_accuracy, val_precision, val_recall, val_f1, val_class_accuracies = self.evaluate_per_epoch(val_loader)
+                test_loss, test_accuracy, test_precision, test_recall, test_f1, test_class_accuracies = self.evaluate_per_epoch(self.test_loader)
     
                 epoch_metrics.append({
                     "fold": fold + 1,
@@ -192,6 +203,12 @@ class ChemBERTaFineTuner:
                     "val_recall": val_recall,
                     "val_f1": val_f1,
                     "val_class_accuracies": val_class_accuracies,
+                    "test_loss": test_loss,
+                    "test_accuracy": test_accuracy,
+                    "test_precision": test_precision,
+                    "test_recall": test_recall,
+                    "test_f1": test_f1,
+                    "test_class_accuracies": test_class_accuracies,
                     "epoch_duration": epoch_duration
                 })
     
@@ -207,20 +224,38 @@ class ChemBERTaFineTuner:
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Val F1 Score: {val_f1 * 100:.2f}%")
                 for class_idx, class_acc in enumerate(val_class_accuracies):
                     print(f"Fold {fold + 1} Epoch {epoch + 1} Val Class {self.class_labels[class_idx]} Accuracy: {class_acc * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test Loss: {test_loss:.4f}")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test Accuracy: {test_accuracy * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test Precision: {test_precision * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test Recall: {test_recall * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test F1 Score: {test_f1 * 100:.2f}%")
+                for class_idx, class_acc in enumerate(test_class_accuracies):
+                    print(f"Fold {fold + 1} Epoch {epoch + 1} Test Class {self.class_labels[class_idx]} Accuracy: {class_acc * 100:.2f}%")
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Duration: {epoch_duration:.2f} seconds")
     
         return epoch_metrics
 
     def balance_classes(self, smiles, labels):
+        # Combine SMILES and labels in a single array
         combined_data = [(smiles[i], labels[i]) for i in range(len(smiles))]
-        flattened_labels = [tuple(label) for label in labels]
+    
+        # Convert labels to NumPy array
+        flattened_labels = np.array([tuple(label) for label in labels])
+    
+        # Convert combined_data to a NumPy array with a fixed dtype
+        smiles_array = np.array([data[0] for data in combined_data], dtype=object)
+    
+        # Initialize RandomOverSampler
         ros = RandomOverSampler(random_state=42)
-        combined_data_resampled, _ = ros.fit_resample(combined_data, flattened_labels)
+    
+        # Fit and resample the data
+        combined_data_resampled, _ = ros.fit_resample(smiles_array.reshape(-1, 1), flattened_labels)
+    
+        # Extract resampled SMILES and labels
         smiles_resampled = [data[0] for data in combined_data_resampled]
-        labels_resampled = [data[1] for data in combined_data_resampled]
+        labels_resampled = [list(label) for label in _]
+    
         return smiles_resampled, labels_resampled
-
-        
 
     # Método para avaliação por época
     def evaluate_per_epoch(self, loader):
@@ -260,53 +295,9 @@ class ChemBERTaFineTuner:
     
         return test_loss, test_accuracy, test_precision, test_recall, test_f1, class_accuracies  # Retorna as métricas calculadas
 
-
     # Método para avaliação final do modelo
     def evaluate(self):
-        self.model.eval()  # Coloca o modelo em modo de avaliação
-        self.classifier.eval()  # Coloca o classificador em modo de avaliação
-        correct_predictions = 0  # Inicializa a contagem de predições corretas
-        total_predictions = 0  # Inicializa a contagem total de predições
-    
-        all_labels = []  # Lista para armazenar todos os rótulos reais
-        all_predictions = []  # Lista para armazenar todas as predições do modelo
-        test_losses = []  # Lista para armazenar as perdas do conjunto de teste
-    
-        criterion = nn.CrossEntropyLoss()  # Define o critério de perda como CrossEntropyLoss
-    
-        with torch.no_grad():  # Desativa o cálculo de gradientes, pois estamos em modo de avaliação
-            for batch in tqdm(self.test_loader, desc="Evaluating"):  # Itera sobre cada mini-batch do conjunto de teste
-                tokens, labels = batch  # Extrai os tokens e rótulos do mini-batch
-                tokens = {key: val.to(self.device) for key, val in tokens.items()}  # Move os tokens para o dispositivo (CPU/GPU)
-                labels = labels.to(self.device)  # Move os rótulos para o dispositivo
-    
-                outputs = self.model(**tokens).last_hidden_state.mean(dim=1)  # Passa os tokens pelo modelo Roberta
-                predictions = self.classifier(outputs)  # Passa a saída do Roberta pelo classificador
-                predicted_labels = torch.argmax(predictions, dim=1)  # Obtém as predições do modelo
-    
-                loss = criterion(predictions, labels)  # Calcula a perda entre as predições e os rótulos
-                test_losses.append(loss.item())  # Armazena a perda do mini-batch
-    
-                all_labels.extend(labels.cpu().numpy())  # Armazena os rótulos reais
-                all_predictions.extend(predicted_labels.cpu().numpy())  # Armazena as predições do modelo
-    
-                correct_predictions += (predicted_labels == labels).sum().item()  # Conta as predições corretas
-                total_predictions += labels.size(0)  # Conta o total de predições
-    
-        # Calcula as métricas de desempenho no conjunto de teste
-        accuracy = correct_predictions / total_predictions  # Calcula a acurácia no conjunto de teste
-        precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted')  # Calcula precisão, recall e F1-score
-        test_loss = np.mean(test_losses)  # Calcula a perda média no conjunto de teste
-    
-        # Imprime as métricas de desempenho
-        print(f"Test Accuracy: {accuracy * 100:.2f}%")
-        print(f"Test Precision: {precision * 100:.2f}%")
-        print(f"Test Recall: {recall * 100:.2f}%")
-        print(f"Test F1 Score: {f1 * 100:.2f}%")
-        print(f"Test Loss: {test_loss:.4f}")
-    
-        return accuracy, precision, recall, f1, test_loss  # Retorna as métricas calculadas
-
+        return self.evaluate_per_epoch(self.test_loader)
 
     # Método para salvar o modelo treinado
     def save_model(self, output_dir):
@@ -326,13 +317,13 @@ def read_models(file_path):
 def objective(trial, model_name, data_path):
     learning_rate = trial.suggest_float('learning_rate', 1e-6, 1e-4, log=True)
     batch_size = trial.suggest_int('batch_size', 16, 64)
-    epochs = trial.suggest_int('epochs', 5, 15)
+    epochs = trial.suggest_int('epochs', 5, 10)
 
     fine_tuner = ChemBERTaFineTuner(data_path, model_name=model_name, batch_size=batch_size, epochs=epochs, learning_rate=learning_rate)
 
     fine_tuner.load_data()
     epoch_metrics = fine_tuner.train_classifier()
-    accuracy, precision, recall, f1, test_loss = fine_tuner.evaluate()
+    accuracy, precision, recall, f1, test_loss, test_class_accuracies = fine_tuner.evaluate()
 
     return accuracy
 
@@ -362,7 +353,7 @@ def main():
 
         fine_tuner.load_data()  # Carrega os dados de treinamento e teste
         epoch_metrics = fine_tuner.train_classifier()  # Treina o classificador e obtém as métricas por época
-        accuracy, precision, recall, f1, test_loss = fine_tuner.evaluate()  # Avalia o desempenho do modelo no conjunto de teste
+        accuracy, precision, recall, f1, test_loss, test_class_accuracies = fine_tuner.evaluate()  # Avalia o desempenho do modelo no conjunto de teste
         fine_tuner.save_model(model_output_dir)  # Salva o modelo treinado e o tokenizador
 
         model_end_time = time.time()  # Marca o fim do tempo de treinamento para este modelo
@@ -373,10 +364,11 @@ def main():
         metrics = {
             "epoch_metrics": epoch_metrics,
             "test_loss": test_loss,
-            "accuracy": accuracy,
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
+            "test_accuracy": accuracy,
+            "test_precision": precision,
+            "test_recall": recall,
+            "test_f1": f1,
+            "test_class_accuracies": test_class_accuracies,
             "best_params": best_params,
             "training_time": model_duration
         }
