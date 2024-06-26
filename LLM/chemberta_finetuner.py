@@ -17,6 +17,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_fscore_support
 from transformers import RobertaModel, RobertaTokenizer, get_linear_schedule_with_warmup
 
+from imblearn.over_sampling import RandomOverSampler
+
+
 # Define o número de CPU's e o dispositivo de computação (CPU ou GPU)
 WORKERS = os.cpu_count()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -111,122 +114,133 @@ class ChemBERTaFineTuner:
         self.test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=WORKERS)
 
     # Método para treinamento do modelo
-     def train_classifier(self):
-        self.model.train()  # Coloca o modelo Roberta em modo de treinamento
-        self.classifier.train()  # Coloca o classificador em modo de treinamento
-        
-        # Define o otimizador AdamW com os parâmetros do modelo e do classificador
-        optimizer = optim.AdamW(list(self.model.parameters()) + list(self.classifier.parameters()), lr=self.learning_rate)
-        
-        # Define o critério de perda como CrossEntropyLoss
-        criterion = nn.CrossEntropyLoss()
-        
-        # Calcula o número total de passos de treinamento
-        total_steps = len(self.train_loader) * self.epochs
-        
-        # Define o scheduler para ajustar a taxa de aprendizado durante o treinamento
-        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
-        
-        epoch_metrics = []  # Lista para armazenar as métricas de cada época
-        
-        # Loop de treinamento para cada época
-        for epoch in range(self.epochs):
-            start_time = time.time()  # Marca o início da época
-            epoch_loss = 0  # Inicializa a perda da época
-            correct_predictions = 0  # Inicializa a contagem de predições corretas
-            total_predictions = 0  # Inicializa a contagem total de predições
-            
-            all_labels = []  # Lista para armazenar todos os rótulos reais
-            all_predictions = []  # Lista para armazenar todas as predições do modelo
-            
-            # Loop sobre cada mini-batch de dados de treinamento
-            for batch in tqdm(self.train_loader, desc=f"Training Classifier Epoch {epoch + 1}/{self.epochs}"):
-                tokens, labels = batch  # Extrai os tokens e rótulos do mini-batch
-                tokens = {key: val.to(self.device) for key, val in tokens.items()}  # Move os tokens para o dispositivo (CPU/GPU)
-                labels = labels.to(self.device)  # Move os rótulos para o dispositivo
-                
-                optimizer.zero_grad()  # Zera os gradientes do otimizador
-                
-                with autocast():  # Usa mixed precision para acelerar o treinamento e economizar memória
-                    outputs = self.model(**tokens).last_hidden_state.mean(dim=1)  # Passa os tokens pelo modelo Roberta
-                    predictions = self.classifier(outputs)  # Passa a saída do Roberta pelo classificador
-                    loss = criterion(predictions, labels)  # Calcula a perda entre as predições e os rótulos
-                
-                self.scaler.scale(loss).backward()  # Calcula os gradientes
-                self.scaler.step(optimizer)  # Atualiza os parâmetros do modelo
-                self.scaler.update()  # Atualiza o scaler para mixed precision
-                scheduler.step()  # Atualiza a taxa de aprendizado
-                
-                epoch_loss += loss.item()  # Acumula a perda da época
-                
-                predicted_labels = torch.argmax(predictions, dim=1)  # Obtém as predições do modelo
-                all_labels.extend(labels.cpu().numpy())  # Armazena os rótulos reais
-                all_predictions.extend(predicted_labels.cpu().numpy())  # Armazena as predições do modelo
-                correct_predictions += (predicted_labels == labels).sum().item()  # Conta as predições corretas
-                total_predictions += labels.size(0)  # Conta o total de predições
-            
-            epoch_duration = time.time() - start_time  # Calcula a duração da época
-            epoch_loss /= len(self.train_loader)  # Calcula a perda média da época
-            accuracy = correct_predictions / total_predictions  # Calcula a acurácia da época
-            precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted')  # Calcula precisão, recall e F1-score
-            
-            # Avaliação no conjunto de teste após cada época
-            test_loss, test_accuracy, test_precision, test_recall, test_f1 = self.evaluate_per_epoch()
-            
-            # Armazena as métricas da época
-            epoch_metrics.append({
-                "epoch": epoch + 1,
-                "train_loss": epoch_loss,
-                "train_accuracy": accuracy,
-                "train_precision": precision,
-                "train_recall": recall,
-                "train_f1": f1,
-                "test_loss": test_loss,
-                "test_accuracy": test_accuracy,
-                "test_precision": test_precision,
-                "test_recall": test_recall,
-                "test_f1": test_f1,
-                "epoch_duration": epoch_duration
-            })
+    def train_classifier(self):
+        kf = KFold(n_splits=5, shuffle=True, random_state=42)
     
-            # Impressão das métricas da época
-            print(f"Epoch {epoch + 1} Train Loss: {epoch_loss}")
-            print(f"Epoch {epoch + 1} Train Accuracy: {accuracy * 100:.2f}%")
-            print(f"Epoch {epoch + 1} Train Precision: {precision * 100:.2f}%")
-            print(f"Epoch {epoch + 1} Train Recall: {recall * 100:.2f}%")
-            print(f"Epoch {epoch + 1} Train F1 Score: {f1 * 100:.2f}%")
-            print(f"Epoch {epoch + 1} Test Loss: {test_loss:.4f}")
-            print(f"Epoch {epoch + 1} Test Accuracy: {test_accuracy * 100:.2f}%")
-            print(f"Epoch {epoch + 1} Test Precision: {test_precision * 100:.2f}%")
-            print(f"Epoch {epoch + 1} Test Recall: {test_recall * 100:.2f}%")
-            print(f"Epoch {epoch + 1} Test F1 Score: {test_f1 * 100:.2f}%")
-            print(f"Epoch {epoch + 1} Duration: {epoch_duration:.2f} seconds")
+        epoch_metrics = []  # Lista para armazenar as métricas de cada época
+    
+        for fold, (train_idx, val_idx) in enumerate(kf.split(self.smiles_train)):
+            train_smiles = [self.smiles_train[i] for i in train_idx]
+            train_labels = [self.labels_train[i] for i in train_idx]
+            val_smiles = [self.smiles_train[i] for i in val_idx]
+            val_labels = [self.labels_train[i] for i in val_idx]
+    
+            # Balanceamento de classes no conjunto de treino
+            train_smiles, train_labels = self.balance_classes(train_smiles, train_labels)
+    
+            train_dataset = SMILESDataset(train_smiles, train_labels, self.model_name)
+            val_dataset = SMILESDataset(val_smiles, val_labels, self.model_name)
+    
+            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=WORKERS)
+            val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=WORKERS)
+    
+            self.model.train()  # Coloca o modelo Roberta em modo de treinamento
+            self.classifier.train()  # Coloca o classificador em modo de treinamento
+    
+            optimizer = optim.AdamW(list(self.model.parameters()) + list(self.classifier.parameters()), lr=self.learning_rate)
+            criterion = nn.BCEWithLogitsLoss()
+            total_steps = len(train_loader) * self.epochs
+            scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
+    
+            for epoch in range(self.epochs):
+                start_time = time.time()
+                epoch_loss = 0
+                all_labels = []
+                all_predictions = []
+    
+                for batch in tqdm(train_loader, desc=f"Training Classifier Fold {fold + 1} Epoch {epoch + 1}/{self.epochs}"):
+                    tokens, labels = batch
+                    tokens = {key: val.to(self.device) for key, val in tokens.items()}
+                    labels = labels.to(self.device)
+    
+                    optimizer.zero_grad()
+    
+                    with autocast():
+                        outputs = self.model(**tokens).last_hidden_state.mean(dim=1)
+                        predictions = self.classifier(outputs)
+                        loss = criterion(predictions, labels)
+    
+                    self.scaler.scale(loss).backward()
+                    self.scaler.step(optimizer)
+                    self.scaler.update()
+                    scheduler.step()
+    
+                    epoch_loss += loss.item()
+                    predicted_labels = (torch.sigmoid(predictions) > 0.5).float()
+                    all_labels.extend(labels.cpu().numpy())
+                    all_predictions.extend(predicted_labels.cpu().numpy())
+    
+                epoch_duration = time.time() - start_time
+                epoch_loss /= len(train_loader)
+                accuracy = accuracy_score(np.vstack(all_labels), np.vstack(all_predictions))
+                precision, recall, f1, _ = precision_recall_fscore_support(np.vstack(all_labels), np.vstack(all_predictions), average='weighted')
+    
+                # Avaliação no conjunto de validação após cada época
+                val_loss, val_accuracy, val_precision, val_recall, val_f1, val_class_accuracies = self.evaluate_per_epoch(val_loader)
+    
+                epoch_metrics.append({
+                    "fold": fold + 1,
+                    "epoch": epoch + 1,
+                    "train_loss": epoch_loss,
+                    "train_accuracy": accuracy,
+                    "train_precision": precision,
+                    "train_recall": recall,
+                    "train_f1": f1,
+                    "val_loss": val_loss,
+                    "val_accuracy": val_accuracy,
+                    "val_precision": val_precision,
+                    "val_recall": val_recall,
+                    "val_f1": val_f1,
+                    "val_class_accuracies": val_class_accuracies,
+                    "epoch_duration": epoch_duration
+                })
+    
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Train Loss: {epoch_loss}")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Train Accuracy: {accuracy * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Train Precision: {precision * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Train Recall: {recall * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Train F1 Score: {f1 * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Val Loss: {val_loss:.4f}")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Val Accuracy: {val_accuracy * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Val Precision: {val_precision * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Val Recall: {val_recall * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Val F1 Score: {val_f1 * 100:.2f}%")
+                for class_idx, class_acc in enumerate(val_class_accuracies):
+                    print(f"Fold {fold + 1} Epoch {epoch + 1} Val Class {self.class_labels[class_idx]} Accuracy: {class_acc * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Duration: {epoch_duration:.2f} seconds")
     
         return epoch_metrics
 
+    def balance_classes(self, smiles, labels):
+        combined_data = [(smiles[i], labels[i]) for i in range(len(smiles))]
+        flattened_labels = [tuple(label) for label in labels]
+        ros = RandomOverSampler(random_state=42)
+        combined_data_resampled, _ = ros.fit_resample(combined_data, flattened_labels)
+        smiles_resampled = [data[0] for data in combined_data_resampled]
+        labels_resampled = [data[1] for data in combined_data_resampled]
+        return smiles_resampled, labels_resampled
+
+        
 
     # Método para avaliação por época
-    def evaluate_per_epoch(self):
+    def evaluate_per_epoch(self, loader):
         self.model.eval()  # Coloca o modelo em modo de avaliação
         self.classifier.eval()  # Coloca o classificador em modo de avaliação
-        correct_predictions = 0  # Inicializa a contagem de predições corretas
-        total_predictions = 0  # Inicializa a contagem total de predições
-    
         all_labels = []  # Lista para armazenar todos os rótulos reais
         all_predictions = []  # Lista para armazenar todas as predições do modelo
         test_losses = []  # Lista para armazenar as perdas do conjunto de teste
     
-        criterion = nn.CrossEntropyLoss()  # Define o critério de perda como CrossEntropyLoss
+        criterion = nn.BCEWithLogitsLoss()  # Define o critério de perda como BCEWithLogitsLoss
     
         with torch.no_grad():  # Desativa o cálculo de gradientes, pois estamos em modo de avaliação
-            for batch in self.test_loader:  # Itera sobre cada mini-batch do conjunto de teste
+            for batch in loader:  # Itera sobre cada mini-batch do conjunto de teste
                 tokens, labels = batch  # Extrai os tokens e rótulos do mini-batch
                 tokens = {key: val.to(self.device) for key, val in tokens.items()}  # Move os tokens para o dispositivo (CPU/GPU)
                 labels = labels.to(self.device)  # Move os rótulos para o dispositivo
     
                 outputs = self.model(**tokens).last_hidden_state.mean(dim=1)  # Passa os tokens pelo modelo Roberta
                 predictions = self.classifier(outputs)  # Passa a saída do Roberta pelo classificador
-                predicted_labels = torch.argmax(predictions, dim=1)  # Obtém as predições do modelo
+                predicted_labels = (torch.sigmoid(predictions) > 0.5).float()  # Obtém as predições do modelo
     
                 loss = criterion(predictions, labels)  # Calcula a perda entre as predições e os rótulos
                 test_losses.append(loss.item())  # Armazena a perda do mini-batch
@@ -234,14 +248,18 @@ class ChemBERTaFineTuner:
                 all_labels.extend(labels.cpu().numpy())  # Armazena os rótulos reais
                 all_predictions.extend(predicted_labels.cpu().numpy())  # Armazena as predições do modelo
     
-                correct_predictions += (predicted_labels == labels).sum().item()  # Conta as predições corretas
-                total_predictions += labels.size(0)  # Conta o total de predições
-    
         test_loss = np.mean(test_losses)  # Calcula a perda média no conjunto de teste
-        test_accuracy = correct_predictions / total_predictions  # Calcula a acurácia no conjunto de teste
+        all_labels = np.vstack(all_labels)
+        all_predictions = np.vstack(all_predictions)
+        test_accuracy = accuracy_score(all_labels, all_predictions)  # Calcula a acurácia no conjunto de teste
         test_precision, test_recall, test_f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted')  # Calcula precisão, recall e F1-score
     
-        return test_loss, test_accuracy, test_precision, test_recall, test_f1  # Retorna as métricas calculadas
+        # Calcula a acurácia para cada classe
+        mcm = multilabel_confusion_matrix(all_labels, all_predictions)
+        class_accuracies = mcm[:, 1, 1] / (mcm[:, 1, 1] + mcm[:, 0, 1] + mcm[:, 1, 0])
+    
+        return test_loss, test_accuracy, test_precision, test_recall, test_f1, class_accuracies  # Retorna as métricas calculadas
+
 
     # Método para avaliação final do modelo
     def evaluate(self):
