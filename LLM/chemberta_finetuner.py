@@ -22,6 +22,10 @@ from transformers import RobertaModel, RobertaTokenizer, get_linear_schedule_wit
 WORKERS = os.cpu_count()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+# Inputs
+MODELS_LIST = 'pre_trained_models.txt'
+DATA_PATH = './train_data.parquet'
+
 # Definição dos parâmetros de otimização
 LEARNINGRATE_START = 1e-5
 LEARNINGRATE_END = 3e-5
@@ -332,8 +336,8 @@ def objective(trial, model_name, data_path):
 # Função principal
 def main():
     start_time = time.time()  # Marca o início do tempo de execução do script
-    models = read_models('pre_trained_models.txt')  # Lê a lista de modelos pré-treinados a partir de um arquivo
-    data_path = './train_data.parquet'  # Caminho para o arquivo de dados de treinamento
+    models = read_models(MODELS_LIST)  # Lê a lista de modelos pré-treinados a partir de um arquivo
+    data_path = DATA_PATH
     results = {}  # Dicionário para armazenar os resultados de cada modelo
 
     for model in models:
