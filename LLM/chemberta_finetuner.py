@@ -144,7 +144,7 @@ class ChemBERTaFineTuner:
             optimizer = optim.AdamW(list(self.model.parameters()) + list(self.classifier.parameters()), lr=self.learning_rate)
             criterion = nn.BCEWithLogitsLoss()
             total_steps = len(train_loader) * self.epochs
-            scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
+            scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=int(0.1 * total_steps), num_training_steps=total_steps)
 
             for epoch in range(self.epochs):
                 start_time = time.time()
@@ -181,9 +181,10 @@ class ChemBERTaFineTuner:
 
                 # Calcula a acurácia para cada classe no conjunto de treino
                 train_class_accuracies = self.calculate_class_accuracies(np.vstack(all_labels), np.vstack(all_predictions))
+                train_class_avg_accuracy = np.mean(train_class_accuracies)
 
                 # Avaliação no conjunto de validação após cada época
-                val_loss, val_accuracy, val_precision, val_recall, val_f1, val_class_accuracies, roc_auc, pr_auc, conf_matrix = self.evaluate_per_epoch(val_loader)
+                val_loss, val_accuracy, val_precision, val_recall, val_f1, val_class_accuracies, val_class_avg_accuracy, roc_auc, pr_auc, conf_matrix = self.evaluate_per_epoch(val_loader)
 
                 epoch_metrics.append({
                     "fold": fold + 1,
@@ -194,12 +195,14 @@ class ChemBERTaFineTuner:
                     "train_recall": recall,
                     "train_f1": f1,
                     "train_class_accuracies": train_class_accuracies,
+                    "train_class_avg_accuracy": train_class_avg_accuracy,
                     "val_loss": val_loss,
                     "val_accuracy": val_accuracy,
                     "val_precision": val_precision,
                     "val_recall": val_recall,
                     "val_f1": val_f1,
                     "val_class_accuracies": val_class_accuracies,
+                    "val_class_avg_accuracy": val_class_avg_accuracy,
                     "roc_auc": roc_auc,
                     "pr_auc": pr_auc,
                     "conf_matrix": conf_matrix,
@@ -213,6 +216,7 @@ class ChemBERTaFineTuner:
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Train F1 Score: {f1 * 100:.2f}%")
                 for class_idx, class_acc in enumerate(train_class_accuracies):
                     print(f"Fold {fold + 1} Epoch {epoch + 1} Train Class {self.class_labels[class_idx]} Accuracy: {class_acc * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Train Class Average Accuracy: {train_class_avg_accuracy * 100:.2f}%")
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Val Loss: {val_loss:.4f}")
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Val Accuracy: {val_accuracy * 100:.2f}%")
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Val Precision: {val_precision * 100:.2f}%")
@@ -220,6 +224,7 @@ class ChemBERTaFineTuner:
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Val F1 Score: {val_f1 * 100:.2f}%")
                 for class_idx, class_acc in enumerate(val_class_accuracies):
                     print(f"Fold {fold + 1} Epoch {epoch + 1} Val Class {self.class_labels[class_idx]} Accuracy: {class_acc * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Val Class Average Accuracy: {val_class_avg_accuracy * 100:.2f}%")
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Duration: {epoch_duration:.2f} seconds")
 
         return epoch_metrics
@@ -269,6 +274,7 @@ class ChemBERTaFineTuner:
 
         # Calcula a acurácia para cada classe
         class_accuracies = self.calculate_class_accuracies(all_labels, all_predictions)
+        class_avg_accuracy = np.mean(class_accuracies)
 
         # Calcula ROC-AUC e PR-AUC
         roc_auc = roc_auc_score(all_labels, all_probabilities, average='weighted', multi_class='ovr')
@@ -277,7 +283,7 @@ class ChemBERTaFineTuner:
         # Calcula a matriz de confusão
         conf_matrix = multilabel_confusion_matrix(all_labels, all_predictions)
 
-        return test_loss, test_accuracy, test_precision, test_recall, test_f1, class_accuracies, roc_auc, pr_auc, conf_matrix  # Retorna as métricas calculadas
+        return test_loss, test_accuracy, test_precision, test_recall, test_f1, class_accuracies, class_avg_accuracy, roc_auc, pr_auc, conf_matrix  # Retorna as métricas calculadas
 
     # Método para avaliação final do modelo
     def evaluate(self):
@@ -308,7 +314,7 @@ def objective(trial, model_name, data_path):
 
     fine_tuner.load_data()
     epoch_metrics = fine_tuner.train_classifier()
-    accuracy, precision, recall, f1, test_loss, class_accuracies, roc_auc, pr_auc, conf_matrix = fine_tuner.evaluate()
+    accuracy, precision, recall, f1, test_loss, class_accuracies, class_avg_accuracy, roc_auc, pr_auc, conf_matrix = fine_tuner.evaluate()
 
     return accuracy
 
@@ -338,7 +344,7 @@ def main():
 
         fine_tuner.load_data()  # Carrega os dados de treinamento e teste
         epoch_metrics = fine_tuner.train_classifier()  # Treina o classificador e obtém as métricas por época
-        accuracy, precision, recall, f1, test_loss, class_accuracies, roc_auc, pr_auc, conf_matrix = fine_tuner.evaluate()  # Avalia o desempenho do modelo no conjunto de teste
+        accuracy, precision, recall, f1, test_loss, class_accuracies, class_avg_accuracy, roc_auc, pr_auc, conf_matrix = fine_tuner.evaluate()  # Avalia o desempenho do modelo no conjunto de teste
         fine_tuner.save_model(model_output_dir)  # Salva o modelo treinado e o tokenizador
 
         model_end_time = time.time()  # Marca o fim do tempo de treinamento para este modelo
@@ -354,6 +360,7 @@ def main():
             "recall": recall,
             "f1": f1,
             "class_accuracies": class_accuracies.tolist(),
+            "class_avg_accuracy": class_avg_accuracy,
             "roc_auc": roc_auc,
             "pr_auc": pr_auc,
             "conf_matrix": conf_matrix.tolist(),
