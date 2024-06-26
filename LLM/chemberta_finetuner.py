@@ -16,11 +16,8 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score, multilabel_confusion_matrix, roc_auc_score, average_precision_score
-from transformers import RobertaModel, RobertaTokenizer, get_linear_schedule_with_warmup
+from transformers import RobertaModel, RobertaTokenizer, get_linear_schedule_with_warmup=
 
-# Define o número de CPU's e o dispositivo de computação (CPU ou GPU)
-WORKERS = os.cpu_count()
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Inputs
 MODELS_LIST = 'pre_trained_models.txt'
@@ -33,6 +30,12 @@ EPOCHS_START = 3
 EPOCHS_END = 10
 BATCH_SIZE = 32
 N_TRIALS = 3 # Executa 3 trials para otimização
+
+
+# Define o número de CPU's e o dispositivo de computação (CPU ou GPU)
+WORKERS = os.cpu_count()
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 # Classe personalizada para dataset de SMILES
 class SMILESDataset(Dataset):
