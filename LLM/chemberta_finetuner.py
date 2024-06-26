@@ -32,6 +32,7 @@ LEARNINGRATE_END = 3e-5
 EPOCHS_START = 3
 EPOCHS_END = 10
 BATCH_SIZE = 32
+N_TRIALS = 3 # Executa 3 trials para otimização
 
 # Classe personalizada para dataset de SMILES
 class SMILESDataset(Dataset):
@@ -352,7 +353,7 @@ def main():
 
         # Cria um estudo Optuna para otimização dos hiperparâmetros, buscando maximizar a acurácia
         study = optuna.create_study(direction='maximize', study_name=model)
-        study.optimize(lambda trial: objective(trial, model, data_path), n_trials=3)  # Executa 3 trials para otimização
+        study.optimize(lambda trial: objective(trial, model, data_path), n_trials=N_TRIALS)  # Executa 3 trials para otimização
 
         best_trial = study.best_trial  # Obtém o melhor trial encontrado pelo Optuna
         best_params = best_trial.params  # Obtém os melhores hiperparâmetros encontrados pelo Optuna
