@@ -41,7 +41,7 @@ class SMILESDataset(Dataset):
 
 # Classe para realizar o fine-tuning do modelo ChemBERTa
 class ChemBERTaFineTuner:
-    def __init__(self, data_path, model_name, batch_size=32, epochs=10, learning_rate=2e-5):
+    def __init__(self, data_path, model_name, batch_size=32, epochs=5, learning_rate=2e-5, weight_decay=0.01):
         num_cores = psutil.cpu_count(logical=True)
         total_memory = psutil.virtual_memory().total // (1024 ** 3)  # Convertendo para GB
 
@@ -70,6 +70,7 @@ class ChemBERTaFineTuner:
         self.batch_size = batch_size
         self.epochs = epochs
         self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
         self.device = DEVICE
         self.scaler = GradScaler()
 
@@ -141,7 +142,7 @@ class ChemBERTaFineTuner:
             self.model.train()  # Coloca o modelo Roberta em modo de treinamento
             self.classifier.train()  # Coloca o classificador em modo de treinamento
 
-            optimizer = optim.AdamW(list(self.model.parameters()) + list(self.classifier.parameters()), lr=self.learning_rate)
+            optimizer = optim.AdamW(list(self.model.parameters()) + list(self.classifier.parameters()), lr=self.learning_rate, weight_decay=self.weight_decay, betas=(0.9, 0.98), eps=1e-6)
             criterion = nn.BCEWithLogitsLoss()
             total_steps = len(train_loader) * self.epochs
             scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=int(0.1 * total_steps), num_training_steps=total_steps)
@@ -306,8 +307,8 @@ def read_models(file_path):
 
 # Função de objetivo para o Optuna
 def objective(trial, model_name, data_path):
-    learning_rate = trial.suggest_float('learning_rate', 1e-6, 1e-4, log=True)
-    epochs = trial.suggest_int('epochs', 3, 5)
+    learning_rate = trial.suggest_float('learning_rate', 1e-5, 3e-5, log=True)
+    epochs = trial.suggest_int('epochs', 3, 10)
 
     # Padronizando batch_size para 32
     batch_size = 32
@@ -320,8 +321,8 @@ def objective(trial, model_name, data_path):
 
     # Atualizando o retorno da função para incluir precisão
     return accuracy
-    
 
+# Função principal
 def main():
     start_time = time.time()  # Marca o início do tempo de execução do script
     models = read_models('pre_trained_models.txt')  # Lê a lista de modelos pré-treinados a partir de um arquivo
@@ -346,7 +347,7 @@ def main():
         best_params = best_trial.params  # Obtém os melhores hiperparâmetros encontrados pelo Optuna
 
         # Mensagem de conclusão do melhor trial
-        print(f"Best trial {best_trial.number} for model {model} finished with accuracy: {best_trial.value:.4f} and parameters: {best_params}")
+        print(f"Best trial {best_trial.number} for model {model} finished with average accuracy: {best_trial.value:.4f} and parameters: {best_params}")
 
         fine_tuner = ChemBERTaFineTuner(data_path, model_name=model, batch_size=32, **best_params)  # Inicializa o fine-tuner com os melhores parâmetros, batch_size fixo em 32
 
