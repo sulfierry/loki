@@ -22,13 +22,12 @@ from transformers import RobertaModel, RobertaTokenizer, get_linear_schedule_wit
 WORKERS = os.cpu_count()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Optimizer
-LEARNINGRATE_START = "1e-5"
-LEARNINGRATE_END = "3e-5"
-EPOCHS_START = "3"
-EPOCHS_END = "10"
-BATCH_SIZE = "32"
-
+# Definição dos parâmetros de otimização
+LEARNINGRATE_START = 1e-5
+LEARNINGRATE_END = 3e-5
+EPOCHS_START = 3
+EPOCHS_END = 10
+BATCH_SIZE = 32
 
 # Classe personalizada para dataset de SMILES
 class SMILESDataset(Dataset):
@@ -315,7 +314,6 @@ def read_models(file_path):
 
 # Função de objetivo para o Optuna
 def objective(trial, model_name, data_path):
-    
     learning_rate = trial.suggest_float('learning_rate', LEARNINGRATE_START, LEARNINGRATE_END, log=True)
     epochs = trial.suggest_int('epochs', EPOCHS_START, EPOCHS_END)
     
