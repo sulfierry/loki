@@ -307,8 +307,10 @@ def read_models(file_path):
 # Função de objetivo para o Optuna
 def objective(trial, model_name, data_path):
     learning_rate = trial.suggest_float('learning_rate', 1e-6, 1e-4, log=True)
-    batch_size = trial.suggest_int('batch_size', 16, 64)
     epochs = trial.suggest_int('epochs', 3, 5)
+
+    # Padronizando batch_size para 32
+    batch_size = 32
 
     fine_tuner = ChemBERTaFineTuner(data_path, model_name=model_name, batch_size=batch_size, epochs=epochs, learning_rate=learning_rate)
 
@@ -316,9 +318,10 @@ def objective(trial, model_name, data_path):
     epoch_metrics = fine_tuner.train_classifier()
     accuracy, precision, recall, f1, test_loss, class_accuracies, class_avg_accuracy, roc_auc, pr_auc, conf_matrix = fine_tuner.evaluate()
 
+    # Atualizando o retorno da função para incluir precisão
     return accuracy
+    
 
-# Função principal
 def main():
     start_time = time.time()  # Marca o início do tempo de execução do script
     models = read_models('pre_trained_models.txt')  # Lê a lista de modelos pré-treinados a partir de um arquivo
@@ -336,11 +339,16 @@ def main():
         model_start_time = time.time()  # Marca o início do tempo de treinamento para este modelo
 
         # Cria um estudo Optuna para otimização dos hiperparâmetros, buscando maximizar a acurácia
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction='maximize', study_name=model)
         study.optimize(lambda trial: objective(trial, model, data_path), n_trials=3)  # Executa 3 trials para otimização
 
-        best_params = study.best_trial.params  # Obtém os melhores hiperparâmetros encontrados pelo Optuna
-        fine_tuner = ChemBERTaFineTuner(data_path, model_name=model, **best_params)  # Inicializa o fine-tuner com os melhores parâmetros
+        best_trial = study.best_trial  # Obtém o melhor trial encontrado pelo Optuna
+        best_params = best_trial.params  # Obtém os melhores hiperparâmetros encontrados pelo Optuna
+
+        # Mensagem de conclusão do melhor trial
+        print(f"Best trial {best_trial.number} for model {model} finished with accuracy: {best_trial.value:.4f} and parameters: {best_params}")
+
+        fine_tuner = ChemBERTaFineTuner(data_path, model_name=model, batch_size=32, **best_params)  # Inicializa o fine-tuner com os melhores parâmetros, batch_size fixo em 32
 
         fine_tuner.load_data()  # Carrega os dados de treinamento e teste
         epoch_metrics = fine_tuner.train_classifier()  # Treina o classificador e obtém as métricas por época
