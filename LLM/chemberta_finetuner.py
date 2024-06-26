@@ -13,9 +13,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import Dataset, DataLoader
-from sklearn.model_selection import train_test_split, KFold
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.metrics import precision_recall_fscore_support, accuracy_score, multilabel_confusion_matrix
+from sklearn.metrics import precision_recall_fscore_support, accuracy_score, multilabel_confusion_matrix, roc_auc_score, average_precision_score
 from transformers import RobertaModel, RobertaTokenizer, get_linear_schedule_with_warmup
 
 # Define o número de CPU's e o dispositivo de computação (CPU ou GPU)
@@ -120,13 +120,13 @@ class ChemBERTaFineTuner:
         test_dataset = SMILESDataset(smiles_test, labels_test, self.model_name)
         self.test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False, pin_memory=True, num_workers=WORKERS)
 
-    # Método para treinamento do modelo com validação k-fold
+    # Método para treinamento do modelo com validação stratified k-fold
     def train_classifier(self):
-        kf = KFold(n_splits=5, shuffle=True, random_state=42)
+        kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
         epoch_metrics = []  # Lista para armazenar as métricas de cada época
 
-        for fold, (train_idx, val_idx) in enumerate(kf.split(self.smiles_train)):
+        for fold, (train_idx, val_idx) in enumerate(kf.split(self.smiles_train, np.argmax(self.labels_train, axis=1))):
             train_smiles = [self.smiles_train[i] for i in train_idx]
             train_labels = [self.labels_train[i] for i in train_idx]
             val_smiles = [self.smiles_train[i] for i in val_idx]
@@ -183,7 +183,7 @@ class ChemBERTaFineTuner:
                 train_class_accuracies = self.calculate_class_accuracies(np.vstack(all_labels), np.vstack(all_predictions))
 
                 # Avaliação no conjunto de validação após cada época
-                val_loss, val_accuracy, val_precision, val_recall, val_f1, val_class_accuracies = self.evaluate_per_epoch(val_loader)
+                val_loss, val_accuracy, val_precision, val_recall, val_f1, val_class_accuracies, roc_auc, pr_auc, conf_matrix = self.evaluate_per_epoch(val_loader)
 
                 epoch_metrics.append({
                     "fold": fold + 1,
@@ -200,6 +200,9 @@ class ChemBERTaFineTuner:
                     "val_recall": val_recall,
                     "val_f1": val_f1,
                     "val_class_accuracies": val_class_accuracies,
+                    "roc_auc": roc_auc,
+                    "pr_auc": pr_auc,
+                    "conf_matrix": conf_matrix,
                     "epoch_duration": epoch_duration
                 })
 
@@ -234,6 +237,7 @@ class ChemBERTaFineTuner:
         self.classifier.eval()  # Coloca o classificador em modo de avaliação
         all_labels = []  # Lista para armazenar todos os rótulos reais
         all_predictions = []  # Lista para armazenar todas as predições do modelo
+        all_probabilities = []  # Lista para armazenar as probabilidades preditas pelo modelo
         test_losses = []  # Lista para armazenar as perdas do conjunto de teste
 
         criterion = nn.BCEWithLogitsLoss()  # Define o critério de perda como BCEWithLogitsLoss
@@ -247,23 +251,33 @@ class ChemBERTaFineTuner:
                 outputs = self.model(**tokens).last_hidden_state.mean(dim=1)  # Passa os tokens pelo modelo Roberta
                 predictions = self.classifier(outputs)  # Passa a saída do Roberta pelo classificador
                 predicted_labels = (torch.sigmoid(predictions) > 0.5).float()  # Obtém as predições do modelo
+                probabilities = torch.sigmoid(predictions).cpu().numpy()  # Obtém as probabilidades preditas
 
                 loss = criterion(predictions, labels)  # Calcula a perda entre as predições e os rótulos
                 test_losses.append(loss.item())  # Armazena a perda do mini-batch
 
                 all_labels.extend(labels.cpu().numpy())  # Armazena os rótulos reais
                 all_predictions.extend(predicted_labels.cpu().numpy())  # Armazena as predições do modelo
+                all_probabilities.extend(probabilities)  # Armazena as probabilidades preditas
 
         test_loss = np.mean(test_losses)  # Calcula a perda média no conjunto de teste
         all_labels = np.vstack(all_labels)
         all_predictions = np.vstack(all_predictions)
+        all_probabilities = np.vstack(all_probabilities)
         test_accuracy = accuracy_score(all_labels, all_predictions)  # Calcula a acurácia no conjunto de teste
         test_precision, test_recall, test_f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='weighted', zero_division=0)  # Calcula precisão, recall e F1-score
 
         # Calcula a acurácia para cada classe
         class_accuracies = self.calculate_class_accuracies(all_labels, all_predictions)
 
-        return test_loss, test_accuracy, test_precision, test_recall, test_f1, class_accuracies  # Retorna as métricas calculadas
+        # Calcula ROC-AUC e PR-AUC
+        roc_auc = roc_auc_score(all_labels, all_probabilities, average='weighted', multi_class='ovr')
+        pr_auc = average_precision_score(all_labels, all_probabilities, average='weighted')
+
+        # Calcula a matriz de confusão
+        conf_matrix = multilabel_confusion_matrix(all_labels, all_predictions)
+
+        return test_loss, test_accuracy, test_precision, test_recall, test_f1, class_accuracies, roc_auc, pr_auc, conf_matrix  # Retorna as métricas calculadas
 
     # Método para avaliação final do modelo
     def evaluate(self):
@@ -294,7 +308,7 @@ def objective(trial, model_name, data_path):
 
     fine_tuner.load_data()
     epoch_metrics = fine_tuner.train_classifier()
-    accuracy, precision, recall, f1, test_loss, class_accuracies = fine_tuner.evaluate()
+    accuracy, precision, recall, f1, test_loss, class_accuracies, roc_auc, pr_auc, conf_matrix = fine_tuner.evaluate()
 
     return accuracy
 
@@ -324,7 +338,7 @@ def main():
 
         fine_tuner.load_data()  # Carrega os dados de treinamento e teste
         epoch_metrics = fine_tuner.train_classifier()  # Treina o classificador e obtém as métricas por época
-        accuracy, precision, recall, f1, test_loss, class_accuracies = fine_tuner.evaluate()  # Avalia o desempenho do modelo no conjunto de teste
+        accuracy, precision, recall, f1, test_loss, class_accuracies, roc_auc, pr_auc, conf_matrix = fine_tuner.evaluate()  # Avalia o desempenho do modelo no conjunto de teste
         fine_tuner.save_model(model_output_dir)  # Salva o modelo treinado e o tokenizador
 
         model_end_time = time.time()  # Marca o fim do tempo de treinamento para este modelo
@@ -340,6 +354,9 @@ def main():
             "recall": recall,
             "f1": f1,
             "class_accuracies": class_accuracies.tolist(),
+            "roc_auc": roc_auc,
+            "pr_auc": pr_auc,
+            "conf_matrix": conf_matrix.tolist(),
             "best_params": best_params,
             "training_time": model_duration
         }
