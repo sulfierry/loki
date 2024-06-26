@@ -331,7 +331,7 @@ def main():
 
         # Cria um estudo Optuna para otimização dos hiperparâmetros, buscando maximizar a acurácia
         study = optuna.create_study(direction='maximize')
-        study.optimize(lambda trial: objective(trial, model, data_path), n_trials=20)  # Executa 20 trials para otimização
+        study.optimize(lambda trial: objective(trial, model, data_path), n_trials=3)  # Executa 3 trials para otimização
 
         best_params = study.best_trial.params  # Obtém os melhores hiperparâmetros encontrados pelo Optuna
         fine_tuner = ChemBERTaFineTuner(data_path, model_name=model, **best_params)  # Inicializa o fine-tuner com os melhores parâmetros
