@@ -214,7 +214,7 @@ class ChemBERTaFineTuner:
                     "val_precision": val_precision,
                     "val_recall": val_recall,
                     "val_f1": val_f1,
-                    "val_class_accuracies": val_class_accuracies.tolist(),  # Convertendo para lista
+                    "val_class_accuracies": val_class_accuracies,  # Removida a conversão para lista
                     "val_class_avg_accuracy": val_class_avg_accuracy,
                     "roc_auc": roc_auc,
                     "pr_auc": pr_auc,
