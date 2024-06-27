@@ -28,7 +28,7 @@ LEARNINGRATE_END = 3e-5
 EPOCHS_START = 3
 EPOCHS_END = 10
 BATCH_SIZE = 32
-N_TRIALS = 3  # Executa 3 trials para otimização
+N_TRIALS = 3 # Executa 3 trials para otimização
 
 # Define o número de CPU's e o dispositivo de computação (CPU ou GPU)
 WORKERS = os.cpu_count()
@@ -207,18 +207,18 @@ class ChemBERTaFineTuner:
                     "train_precision": precision,
                     "train_recall": recall,
                     "train_f1": f1,
-                    "train_class_accuracies": train_class_accuracies.tolist(),  # Convertendo para lista
+                    "train_class_accuracies": train_class_accuracies.tolist(),
                     "train_class_avg_accuracy": train_class_avg_accuracy,
                     "val_loss": val_loss,
                     "val_accuracy": val_accuracy,
                     "val_precision": val_precision,
                     "val_recall": val_recall,
                     "val_f1": val_f1,
-                    "val_class_accuracies": val_class_accuracies,  # Removida a conversão para lista
+                    "val_class_accuracies": val_class_accuracies,  # Já é uma lista
                     "val_class_avg_accuracy": val_class_avg_accuracy,
                     "roc_auc": roc_auc,
                     "pr_auc": pr_auc,
-                    "conf_matrix": conf_matrix.tolist(),  # Convertendo para lista
+                    "conf_matrix": conf_matrix,
                     "epoch_duration": epoch_duration
                 })
 
@@ -296,7 +296,7 @@ class ChemBERTaFineTuner:
         # Calcula a matriz de confusão
         conf_matrix = multilabel_confusion_matrix(all_labels, all_predictions)
 
-        return test_loss, test_accuracy, test_precision, test_recall, test_f1, class_accuracies.tolist(), class_avg_accuracy, roc_auc, pr_auc, conf_matrix.tolist()  # Convertendo para lista
+        return test_loss, test_accuracy, test_precision, test_recall, test_f1, class_accuracies.tolist(), class_avg_accuracy, roc_auc, pr_auc, conf_matrix  # Removido tolist()
 
     # Método para avaliação final do modelo
     def evaluate(self):
