@@ -28,7 +28,7 @@ LEARNINGRATE_END = 3e-5
 EPOCHS_START = 3
 EPOCHS_END = 10
 BATCH_SIZE = 32
-N_TRIALS = 3 # Executa 3 trials para otimização
+N_TRIALS = 3  # Executa 3 trials para otimização
 
 # Define o número de CPU's e o dispositivo de computação (CPU ou GPU)
 WORKERS = os.cpu_count()
@@ -199,7 +199,10 @@ class ChemBERTaFineTuner:
                 # Avaliação no conjunto de validação após cada época
                 val_loss, val_accuracy, val_precision, val_recall, val_f1, val_class_accuracies, val_class_avg_accuracy, roc_auc, pr_auc, conf_matrix = self.evaluate_per_epoch(val_loader)
 
-                epoch_metrics.append({
+                # Avaliação no conjunto de teste após cada época
+                test_loss, test_accuracy, test_precision, test_recall, test_f1, test_class_accuracies, test_class_avg_accuracy, test_roc_auc, test_pr_auc, test_conf_matrix = self.evaluate_per_epoch(self.test_loader)
+
+                metrics = {
                     "fold": fold + 1,
                     "epoch": epoch + 1,
                     "train_loss": epoch_loss,
@@ -207,20 +210,29 @@ class ChemBERTaFineTuner:
                     "train_precision": precision,
                     "train_recall": recall,
                     "train_f1": f1,
-                    "train_class_accuracies": train_class_accuracies.tolist(),
+                    "train_class_accuracies": train_class_accuracies,  # Lista de floats
                     "train_class_avg_accuracy": train_class_avg_accuracy,
                     "val_loss": val_loss,
                     "val_accuracy": val_accuracy,
                     "val_precision": val_precision,
                     "val_recall": val_recall,
                     "val_f1": val_f1,
-                    "val_class_accuracies": val_class_accuracies,  # Já é uma lista
+                    "val_class_accuracies": val_class_accuracies,  # Lista de floats
                     "val_class_avg_accuracy": val_class_avg_accuracy,
+                    "test_loss": test_loss,
+                    "test_accuracy": test_accuracy,
+                    "test_precision": test_precision,
+                    "test_recall": test_recall,
+                    "test_f1": test_f1,
+                    "test_class_accuracies": test_class_accuracies,  # Lista de floats
+                    "test_class_avg_accuracy": test_class_avg_accuracy,
                     "roc_auc": roc_auc,
                     "pr_auc": pr_auc,
-                    "conf_matrix": conf_matrix,
+                    "conf_matrix": conf_matrix,  # Lista de listas
                     "epoch_duration": epoch_duration
-                })
+                }
+
+                epoch_metrics.append(metrics)
 
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Train Loss: {epoch_loss}")
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Train Accuracy: {accuracy * 100:.2f}%")
@@ -238,6 +250,14 @@ class ChemBERTaFineTuner:
                 for class_idx, class_acc in enumerate(val_class_accuracies):
                     print(f"Fold {fold + 1} Epoch {epoch + 1} Val Class {self.class_labels[class_idx]} Accuracy: {class_acc * 100:.2f}%")
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Val Class Average Accuracy: {val_class_avg_accuracy * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test Loss: {test_loss:.4f}")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test Accuracy: {test_accuracy * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test Precision: {test_precision * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test Recall: {test_recall * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test F1 Score: {test_f1 * 100:.2f}%")
+                for class_idx, class_acc in enumerate(test_class_accuracies):
+                    print(f"Fold {fold + 1} Epoch {epoch + 1} Test Class {self.class_labels[class_idx]} Accuracy: {class_acc * 100:.2f}%")
+                print(f"Fold {fold + 1} Epoch {epoch + 1} Test Class Average Accuracy: {test_class_avg_accuracy * 100:.2f}%")
                 print(f"Fold {fold + 1} Epoch {epoch + 1} Duration: {epoch_duration:.2f} seconds")
 
         return epoch_metrics
@@ -247,7 +267,7 @@ class ChemBERTaFineTuner:
         with np.errstate(divide='ignore', invalid='ignore'):
             class_accuracies = np.divide(mcm[:, 1, 1], mcm[:, 1, 1] + mcm[:, 0, 1])
             class_accuracies[np.isnan(class_accuracies)] = 0  # Define como 0 onde houver divisão por zero
-        return class_accuracies
+        return class_accuracies.tolist()  # Convertendo para lista
 
     # Método para avaliação por época
     def evaluate_per_epoch(self, loader):
@@ -296,7 +316,7 @@ class ChemBERTaFineTuner:
         # Calcula a matriz de confusão
         conf_matrix = multilabel_confusion_matrix(all_labels, all_predictions)
 
-        return test_loss, test_accuracy, test_precision, test_recall, test_f1, class_accuracies.tolist(), class_avg_accuracy, roc_auc, pr_auc, conf_matrix  # Removido tolist()
+        return test_loss, test_accuracy, test_precision, test_recall, test_f1, class_accuracies, class_avg_accuracy, roc_auc, pr_auc, conf_matrix.tolist()  # Convertendo para lista
 
     # Método para avaliação final do modelo
     def evaluate(self):
@@ -329,9 +349,8 @@ def objective(trial, model_name, data_path):
 
     fine_tuner.load_data()
     epoch_metrics = fine_tuner.train_classifier()
-    accuracy, precision, recall, f1, test_loss, class_accuracies, class_avg_accuracy, roc_auc, pr_auc, conf_matrix = fine_tuner.evaluate()
+    _, accuracy, _, _, _, _, _, _, _, _ = fine_tuner.evaluate()
 
-    # Atualizando o retorno da função para incluir precisão
     return accuracy
 
 # Função principal
@@ -380,11 +399,11 @@ def main():
             "precision": precision,
             "recall": recall,
             "f1": f1,
-            "class_accuracies": class_accuracies,
+            "class_accuracies": class_accuracies.tolist(),  # Convertendo para lista
             "class_avg_accuracy": class_avg_accuracy,
             "roc_auc": roc_auc,
             "pr_auc": pr_auc,
-            "conf_matrix": conf_matrix,
+            "conf_matrix": conf_matrix,  # Já é uma lista
             "best_params": best_params,
             "training_time": model_duration
         }
