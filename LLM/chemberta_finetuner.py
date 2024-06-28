@@ -26,7 +26,7 @@ DATA_PATH = './train_data.parquet'
 LEARNINGRATE_START = 1e-5
 LEARNINGRATE_END = 3e-5
 EPOCHS_START = 3
-EPOCHS_END = 10
+EPOCHS_END = 6
 BATCH_SIZE = 32
 N_TRIALS = 3  # Executa 3 trials para otimização
 
