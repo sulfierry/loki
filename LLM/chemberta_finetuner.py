@@ -54,29 +54,7 @@ class SMILESDataset(Dataset):
 # Classe para realizar o fine-tuning do modelo ChemBERTa
 class ChemBERTaFineTuner:
     def __init__(self, data_path, model_name, batch_size=32, epochs=5, learning_rate=2e-5, weight_decay=0.01):
-        num_cores = psutil.cpu_count(logical=True)
-        total_memory = psutil.virtual_memory().total // (1024 ** 3)  # Convertendo para GB
-
-        # Configuração da sessão Spark
-        self.spark = SparkSession.builder \
-            .appName("ChemBERTa Fine-Tuning with Spark") \
-            .master(f"local[{num_cores}]") \
-            .config("spark.driver.memory", f"{int(total_memory * 0.8)}g") \
-            .config("spark.executor.memory", f"{int(total_memory * 0.8)}g") \
-            .config("spark.executor.instances", f"{num_cores // 4}") \
-            .config("spark.executor.cores", f"{num_cores // 4}") \
-            .config("spark.memory.fraction", "0.8") \
-            .config("spark.executor.memoryOverhead", f"{int(total_memory * 0.1)}g") \
-            .config("spark.memory.offHeap.enabled", "true") \
-            .config("spark.memory.offHeap.size", f"{int(total_memory * 0.2)}g") \
-            .config("spark.executor.extraJavaOptions", "-XX:+UseG1GC") \
-            .config("spark.sql.debug.maxToStringFields", "200") \
-            .config("spark.sql.autoBroadcastJoinThreshold", "-1") \
-            .config("spark.driver.maxResultSize", f"{int(total_memory * 0.1)}g") \
-            .config("spark.sql.shuffle.partitions", f"{num_cores * 4}") \
-            .config("spark.default.parallelism", f"{num_cores * 2}") \
-            .getOrCreate()
-
+        self._configure_spark_session()
         self.data_path = data_path
         self.model_name = model_name
         self.batch_size = batch_size
@@ -100,6 +78,30 @@ class ChemBERTaFineTuner:
         self.classifier = nn.Linear(self.hidden_size, self.num_classes)
         self.model.to(self.device)
         self.classifier.to(self.device)
+
+    def _configure_spark_session(self):
+        num_cores = psutil.cpu_count(logical=True)
+        total_memory = psutil.virtual_memory().total // (1024 ** 3)  # Convertendo para GB
+
+        # Configuração da sessão Spark
+        self.spark = SparkSession.builder \
+            .appName("ChemBERTa Fine-Tuning with Spark") \
+            .master(f"local[{num_cores}]") \
+            .config("spark.driver.memory", f"{int(total_memory * 0.8)}g") \
+            .config("spark.executor.memory", f"{int(total_memory * 0.8)}g") \
+            .config("spark.executor.instances", f"{num_cores // 4}") \
+            .config("spark.executor.cores", f"{num_cores // 4}") \
+            .config("spark.memory.fraction", "0.8") \
+            .config("spark.executor.memoryOverhead", f"{int(total_memory * 0.1)}g") \
+            .config("spark.memory.offHeap.enabled", "true") \
+            .config("spark.memory.offHeap.size", f"{int(total_memory * 0.2)}g") \
+            .config("spark.executor.extraJavaOptions", "-XX:+UseG1GC") \
+            .config("spark.sql.debug.maxToStringFields", "200") \
+            .config("spark.sql.autoBroadcastJoinThreshold", "-1") \
+            .config("spark.driver.maxResultSize", f"{int(total_memory * 0.1)}g") \
+            .config("spark.sql.shuffle.partitions", f"{num_cores * 4}") \
+            .config("spark.default.parallelism", f"{num_cores * 2}") \
+            .getOrCreate()
 
     # Método para obter o número de classes
     def _get_num_classes(self):
@@ -399,7 +401,7 @@ def main():
             "precision": precision,
             "recall": recall,
             "f1": f1,
-            "class_accuracies": class_accuracies.tolist(),  # Convertendo para lista
+            "class_accuracies": class_accuracies,  # Lista de floats
             "class_avg_accuracy": class_avg_accuracy,
             "roc_auc": roc_auc,
             "pr_auc": pr_auc,
