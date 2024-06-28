@@ -6,7 +6,7 @@ This documentation describes two scripts utilized for querying the ChEMBL databa
 This script performs SQL queries in the ChEMBL database to retrieve kinase-related compounds with validated activity measurements.
 
 ### Script overview:
-- Connects to the ChEMBL database: `psql -U leon -d chembl_33`.
+- Connects to the ChEMBL database: `psql -U leon -d chembl_34`.
 - Creates two tables:
   - `smile_kinase_manually_validated_kd_ki_ic50_10uM`: Contains compounds with IC50, Ki, and Kd values under 10µM and manually validated data.
   - `smile_kinase_all_compounds`: Includes all kinase-related compounds with activity measurements.
