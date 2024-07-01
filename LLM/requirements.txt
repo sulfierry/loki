@@ -8,3 +8,4 @@ pyspark==3.5.1
 psutil==6.0.0
 pyarrow==16.1.0
 optuna==3.6.1
+torchsummary
