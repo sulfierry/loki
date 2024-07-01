@@ -51,6 +51,9 @@ Instale as dependências do projeto listadas no arquivo `requirements.txt`:
 
 ```bash
 pip install -r requirements.txt
+
+sudo apt-get install graphviz
+
 ```
 
 ### Passo 5: Execute o Script
@@ -66,3 +69,5 @@ python chemberta_finetuner.py
 - `chemberta_finetuner.py`: Script principal para realizar o fine-tuning do modelo.
 - `requirements.txt`: Lista de pacotes necessários para executar o projeto.
 - `README.md`: Instruções para configurar e executar o projeto.
+
+
