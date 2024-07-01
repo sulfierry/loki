@@ -40,13 +40,21 @@ class FormatFileML:
     def split_data(data):
         X = data['canonical_smiles'].values
         y = data['target'].values
-        smiles_train, smiles_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        smiles_train, smiles_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
         return smiles_train, smiles_test, y_train, y_test
 
     @staticmethod
     def save_to_parquet(data, filepath):
         table = pa.Table.from_pandas(data)
         pq.write_table(table, filepath)
+
+    @staticmethod
+    def evaluate_split(y_train, y_test):
+        unique, counts_train = np.unique(y_train, return_counts=True)
+        unique, counts_test = np.unique(y_test, return_counts=True)
+        train_distribution = dict(zip(unique, counts_train))
+        test_distribution = dict(zip(unique, counts_test))
+        return train_distribution, test_distribution
 
 def main():
     # Initialize formatter with the path to the dataset
@@ -60,6 +68,11 @@ def main():
 
     # Split data
     smiles_train, smiles_test, y_train, y_test = formatter.split_data(data)
+
+    # Evaluate the split
+    train_distribution, test_distribution = formatter.evaluate_split(y_train, y_test)
+    print("Train Distribution:", train_distribution)
+    print("Test Distribution:", test_distribution)
 
     # Convert to DataFrame to save in Parquet
     df_train = pd.DataFrame({'canonical_smiles': smiles_train, 'target': y_train})
